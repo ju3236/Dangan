@@ -1,6 +1,6 @@
 // 로그북: 한 챕터(일상 → 조사 → 재판)를 책처럼 모아 보기 / 내보내기
 // 챕터는 재판 로그의 「처형」을 경계로 나눈다 (모두가 볼 수 있는 정보만 사용)
-import { $, esc, store, charById, playerById, download } from './core.js';
+import { $, esc, store, charById, playerById, download, ink } from './core.js';
 
 const BOARD = { notice: '공지', daily: '일상', investigation: '조사', freetime: '자유시간', free: '자유' };
 
@@ -52,7 +52,7 @@ function collect(range, opts) {
 function trialLine(m) {
   const who = esc(nameOf(m.charId, m.authorId, m.author));
   switch (m.type) {
-    case 'say': return `<p class="lb-say"><b style="color:${charById(m.charId)?.color || '#333'}">${who}</b> 「${esc(plain(m.text))}」</p>`;
+    case 'say': return `<p class="lb-say"><b style="${ink(charById(m.charId)?.color || '#333')}">${who}</b> 「${esc(plain(m.text))}」</p>`;
     case 'point': return `<p class="lb-point">🗯 논점 ${m.index} · ${esc(m.topic)} — “${esc(plain(m.text))}”</p>`;
     case 'showdown': return `<p class="lb-say"><b>⚔ ${who}</b> 「${esc(plain(m.text))}」</p>`;
     case 'shoot': return `<p class="lb-shoot">${who} — ${{ agree: '동의한다!', cut: '그 말, 베어 주겠어!' }[m.kind] || '그건 틀렸어!'} ${esc(plain(m.text))}${m.result === 'break' ? ' <b>BREAK!!</b>' : ''}</p>`;

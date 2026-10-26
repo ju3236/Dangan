@@ -1,5 +1,5 @@
 // GM 관리 화면
-import { $, $$, esc, emit, store, render as paint, toast, modal, isGM, charById, avatar, uploadImage, download, PHASES } from './core.js';
+import { $, $$, esc, emit, store, render as paint, toast, modal, isGM, charById, avatar, uploadImage, download, PHASES, ink } from './core.js';
 import { openEditor, openProfile } from './chars.js';
 import { renderCase, gmNav } from './casefile.js';
 import { soundAdminHTML, bindSoundAdmin } from './audio.js';
@@ -181,10 +181,10 @@ function affinityMatrix() {
   const st = students();
   if (st.length < 2) return '';
   const aff = store.state.affinity;
-  return `<div class="aff-matrix-wrap"><table class="aff-matrix"><thead><tr><th></th>${st.map((c) => `<th style="color:${c.color}">${esc(c.name)}</th>`).join('')}</tr></thead><tbody>
+  return `<div class="aff-matrix-wrap"><table class="aff-matrix"><thead><tr><th></th>${st.map((c) => `<th style="${ink(c.color)}">${esc(c.name)}</th>`).join('')}</tr></thead><tbody>
     ${st
       .map(
-        (a) => `<tr><th style="color:${a.color}">${esc(a.name)}</th>${st
+        (a) => `<tr><th style="${ink(a.color)}">${esc(a.name)}</th>${st
           .map((b) => {
             if (a.id === b.id) return '<td class="self">—</td>';
             const r = aff[[a.id, b.id].sort().join('|')];
@@ -202,7 +202,7 @@ function openMotive() {
   const d = modal(`<h2>📼 동기 발표</h2>
     <p class="hint">모두에게 방송할 내용과, 캐릭터마다 학생수첩 메일로 보낼 「동기」를 적어 주세요. 비워 둔 캐릭터에게는 메일이 가지 않아요.</p>
     <label>방송 내용<textarea id="mvText" rows="2" placeholder="예: 여러분에게 특별한 선물을 준비했어요~ 학생수첩을 확인해 주세요! 우푸푸!"></textarea></label>
-    ${chars.map((c) => `<label style="color:${c.color}">${esc(c.name)}에게<textarea data-mv="${c.id}" rows="2" placeholder="예: 당신의 가족이 위험에 처한 영상이 도착했다…"></textarea></label>`).join('')}
+    ${chars.map((c) => `<label style="${ink(c.color)}">${esc(c.name)}에게<textarea data-mv="${c.id}" rows="2" placeholder="예: 당신의 가족이 위험에 처한 영상이 도착했다…"></textarea></label>`).join('')}
     <div class="row end"><button class="btn small pink" id="mvSend">발표</button></div>`, { wide: true });
   $('#mvSend', d).onclick = async () => {
     const perChar = {};

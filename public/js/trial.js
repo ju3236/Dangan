@@ -1,8 +1,5 @@
 // 학급재판: 실시간 채팅 + 단간론파식 대화창 + 표정 스프라이트
-import {
-  $, $$, esc, emit, store, render as paint, toast, modal, isGM, charById, myChars, students, evidenceById,
-  avatar, spriteOf, charSelectHTML, fmtTime, weakHTML, clueHTML, speakAs, lastSprite, download,
-} from './core.js';
+import { $, $$, esc, emit, store, render as paint, toast, modal, isGM, charById, myChars, students, evidenceById, avatar, spriteOf, charSelectHTML, fmtTime, weakHTML, clueHTML, speakAs, lastSprite, download, ink, cvar, setCvar } from './core.js';
 
 let shownId = null; // 무대에 표시 중인 메시지
 let typing = null;
@@ -164,7 +161,7 @@ function renderShowdown() {
   const t = charById(sd.targetId);
   const mine = a?.mine || isGM();
   bar.classList.remove('hidden');
-  bar.innerHTML = `<div><b>⚔ 반론 쇼다운</b> <span style="color:${a?.color}">${esc(a?.name || '?')}</span> → <span style="color:${t?.color}">${esc(t?.name || '?')}</span> <small>대사 ${sd.index + 1}/${sd.total}</small></div>
+  bar.innerHTML = `<div><b>⚔ 반론 쇼다운</b> <span style="${ink(a?.color)}">${esc(a?.name || '?')}</span> → <span style="${ink(t?.color)}">${esc(t?.name || '?')}</span> <small>대사 ${sd.index + 1}/${sd.total}</small></div>
     ${mine
       ? `<div class="row wrap">${sd.index + 1 < sd.total ? '<button type="button" class="btn tiny" data-sd="next">다음 대사 ▶</button>' : ''}
           <button type="button" class="btn tiny pink" data-sd="ok">베였다… 수긍한다 (BREAK)</button>
@@ -238,7 +235,7 @@ function show(id, animate) {
   if (m.type === 'shoot' && m.kind === 'cut') name = `${c?.name || ''} — 그 말, 베어 주겠어!`;
   plate.textContent = name;
   plate.classList.toggle('hidden', !name);
-  plate.style.setProperty('--c', m.type === 'announce' ? '#ffffff' : c?.color || '#ff3e8a');
+  setCvar(plate, m.type === 'announce' ? '#ffffff' : c?.color || '#ff3e8a');
 
   // 스프라이트: 캐릭터 발언이면 교체, 나레이션이면 이전 스프라이트를 흐리게 유지
   const img = $('#stageSprite');
@@ -265,10 +262,10 @@ function show(id, animate) {
       img.classList.add('hidden');
       ini.classList.remove('hidden');
       ini.textContent = c.name.slice(0, 1);
-      ini.style.setProperty('--c', c.color);
+      setCvar(ini, c.color);
     }
     stage.classList.remove('dim');
-    stage.style.setProperty('--c', c.color);
+    setCvar(stage, c.color);
   } else {
     stage.classList.add('dim');
   }
@@ -319,7 +316,7 @@ function renderSeats() {
   const cur = store.trial.find((m) => m.id === shownId);
   $('#seats').innerHTML = chars
     .map(
-      (c) => `<div class="seat ${c.alive ? '' : 'dead'} ${cur?.charId === c.id ? 'speaking' : ''}" data-id="${c.id}" title="${esc(c.name)}" style="--c:${c.color}">
+      (c) => `<div class="seat ${c.alive ? '' : 'dead'} ${cur?.charId === c.id ? 'speaking' : ''}" data-id="${c.id}" title="${esc(c.name)}" style="${cvar(c.color)}">
         ${avatar(c, 46)}<span>${esc(c.name)}</span></div>`
     )
     .join('');
@@ -434,7 +431,7 @@ function logHTML() {
         const t = fmtTime(m.ts, false);
         switch (m.type) {
           case 'say':
-            return `<div class="lg say ${m.id === shownId ? 'current' : ''} ${m.broken ? 'broken' : ''}" data-show="${m.id}" style="--c:${c?.color || '#999'}">
+            return `<div class="lg say ${m.id === shownId ? 'current' : ''} ${m.broken ? 'broken' : ''}" data-show="${m.id}" style="${cvar(c?.color || '#999')}">
               ${avatar(c, 30, m.spriteId)}<div><b>${esc(c?.name || '?')}</b> <small>${t}</small>${gm && m.answerId ? ` <small class="ans">정답: ${esc(evidenceById(m.answerId)?.name || '?')}</small>` : ''}
               <div>${weakHTML(m.text, m.id, !m.broken, true)}</div></div></div>`;
           case 'point':
@@ -443,7 +440,7 @@ function logHTML() {
               <div><div>${weakHTML(m.text, m.id, !m.broken, true)}</div></div></div>`;
           case 'showdown': {
             const tg = charById(m.targetId);
-            return `<div class="lg showdown ${m.id === shownId ? 'current' : ''} ${m.broken ? 'broken' : ''}" data-show="${m.id}" style="--c:${c?.color || '#f33'}">
+            return `<div class="lg showdown ${m.id === shownId ? 'current' : ''} ${m.broken ? 'broken' : ''}" data-show="${m.id}" style="${cvar(c?.color || '#f33')}">
               ${avatar(c, 30)}<div><b>⚔ ${esc(c?.name || '?')}</b> <small>→ ${esc(tg?.name || '?')} · ${m.line}/${m.total} · ${t}</small>
               <div>${weakHTML(m.text, m.id, !m.broken, true)}</div></div></div>`;
           }
@@ -455,13 +452,13 @@ function logHTML() {
             return `<div class="lg announce" data-show="${m.id}"><b>📺 모노쿠마</b> ${clueHTML(m.text)}</div>`;
           case 'shoot': {
             const res = { break: 'BREAK!!', miss: '튕겨났다…', pending: '판정 대기' }[m.result];
-            return `<div class="lg shoot ${m.kind} ${m.result}" data-show="${m.id}" style="--c:${c?.color || '#f80'}">
+            return `<div class="lg shoot ${m.kind} ${m.result}" data-show="${m.id}" style="${cvar(c?.color || '#f80')}">
               <b>${esc(c?.name || '')} — ${{ agree: '동의한다!', cut: '그 말, 베어 주겠어!' }[m.kind] || '그건 틀렸어!'}</b> <span class="res">${res}</span>
               <div>${clueHTML(m.text)}</div>
               ${gm && m.result === 'pending' && m.kind !== 'cut' ? `<div class="row"><button class="btn tiny" data-judge="${m.id}" data-ok="1">✔ 논파 성공</button><button class="btn tiny ghost" data-judge="${m.id}">✘ 실패</button></div>` : ''}</div>`;
           }
           case 'skill':
-            return `<div class="lg skill" data-show="${m.id}" style="--c:${c?.color || '#a6f'}"><b>✨ ${esc(c?.name || '')} 스킬 발동</b><div>${esc(m.text)}</div></div>`;
+            return `<div class="lg skill" data-show="${m.id}" style="${cvar(c?.color || '#a6f')}"><b>✨ ${esc(c?.name || '')} 스킬 발동</b><div>${esc(m.text)}</div></div>`;
           case 'phase':
             return `<div class="lg phase">${esc(m.text)}</div>`;
           default:
@@ -507,7 +504,7 @@ function bulletsHTML() {
   return `<p class="hint">로그나 대화창의 <span class="weak">주황색 약점</span>을 누르면 언령을 쏠 수 있어요.</p>` +
     chars
       .map(
-        (c) => `<h4 style="color:${c.color}">${esc(c.name)} <small>${c.bullets.length}개</small></h4>
+        (c) => `<h4 style="${ink(c.color)}">${esc(c.name)} <small>${c.bullets.length}개</small></h4>
         ${c.bullets.map((id) => evidenceById(id)).filter(Boolean).map((e) => `<div class="bullet-card"><b>⚡ ${esc(e.name)}</b><p>${clueHTML(e.desc)}</p></div>`).join('') || '<p class="hint">언령 없음</p>'}`
       )
       .join('');
@@ -518,7 +515,7 @@ function skillsHTML() {
   return (
     chars
       .map(
-        (c) => `<h4 style="color:${c.color}">${esc(c.name)}</h4>
+        (c) => `<h4 style="${ink(c.color)}">${esc(c.name)}</h4>
         ${c.skills.map((s) => {
           const left = s.maxUses > 0 ? s.maxUses - s.used : null;
           return `<div class="skill-card"><div><b>✨ ${esc(s.name)}</b> <small>${left === null ? '무제한' : `남은 횟수 ${left}/${s.maxUses}`}</small><p>${esc(s.desc)}</p></div>
@@ -543,7 +540,7 @@ function voteHTML() {
       cands
         .map((c) => ({ c, n: t.tally[c.id] || 0 }))
         .sort((a, b) => b.n - a.n)
-        .map(({ c, n }) => `<div class="vote-bar">${avatar(c, 28)}<span class="name" style="color:${c.color}">${esc(c.name)}</span><div class="bar" style="width:${(n / max) * 55}%"></div><b>${n}</b></div>`)
+        .map(({ c, n }) => `<div class="vote-bar">${avatar(c, 28)}<span class="name" style="${ink(c.color)}">${esc(c.name)}</span><div class="bar" style="width:${(n / max) * 55}%"></div><b>${n}</b></div>`)
         .join('');
   }
   if (t.voting) {
@@ -551,7 +548,7 @@ function voteHTML() {
     html += `<h4>투표하기 <small>(${t.voteCount}표 들어옴)</small></h4>` +
       (voters
         .map(
-          (v) => `<div class="voter"><span style="color:${v.color}">${esc(v.name)}</span> →
+          (v) => `<div class="voter"><span style="${ink(v.color)}">${esc(v.name)}</span> →
           <select data-voter="${v.id}"><option value="">선택…</option>${cands.map((c) => `<option value="${c.id}" ${t.myVotes[v.id] === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
           ${t.myVotes[v.id] ? '✔' : ''}</div>`
         )

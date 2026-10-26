@@ -1,5 +1,5 @@
 // 캐릭터 편집 (기본 정보 / 표정 스프라이트 / 고유 스킬) 과 프로필 보기
-import { $, $$, esc, emit, store, modal, toast, isGM, charById, playerById, avatar, uploadImage } from './core.js';
+import { $, $$, esc, emit, store, modal, toast, isGM, charById, playerById, avatar, uploadImage, ink, cvar } from './core.js';
 
 export function openProfile(id) {
   const c = charById(id);
@@ -8,13 +8,13 @@ export function openProfile(id) {
   const owner = playerById(c.ownerId);
   const d = modal(
     `<div class="profile">
-      <div class="profile-art" style="--c:${c.color}">
+      <div class="profile-art" style="${cvar(c.color)}">
         ${c.sprites[0] ? `<img id="pfImg" src="${esc(c.sprites[0].img)}" alt="">` : `<div class="profile-initial">${esc(c.name.slice(0, 1))}</div>`}
         ${c.alive ? '' : '<div class="dead-stamp">사망</div>'}
       </div>
       <div class="profile-info">
         <div class="talent">${esc(c.talent || '초고교급 ???')}</div>
-        <h2 style="color:${c.color}">${esc(c.name)}</h2>
+        <h2 style="${ink(c.color)}">${esc(c.name)}</h2>
         <div class="hint">${c.npc ? 'NPC · ' : ''}플레이어: ${esc(owner?.nickname || '?')}</div>
         ${c.sprites.length > 1 ? `<div class="sprite-thumbs">${c.sprites.map((s) => `<button data-img="${esc(s.img)}" title="${esc(s.label)}"><img src="${esc(s.img)}" alt=""><span>${esc(s.label)}</span></button>`).join('')}</div>` : ''}
         <pre class="profile-text">${esc(c.profile || '프로필이 없습니다.')}</pre>
@@ -204,7 +204,7 @@ export function openEditor(id = null, { npc = false, ownerId = null } = {}) {
 }
 
 export function charCard(c) {
-  return `<button class="char-card ${c.alive ? '' : 'dead'}" data-profile="${c.id}" style="--c:${c.color}">
+  return `<button class="char-card ${c.alive ? '' : 'dead'}" data-profile="${c.id}" style="${cvar(c.color)}">
     ${avatar(c, 84)}
     <b>${esc(c.name)}</b><small>${esc(c.talent || '초고교급 ???')}</small>
     ${c.alive ? '' : '<i class="dead-mark">✝</i>'}

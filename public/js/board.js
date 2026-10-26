@@ -1,8 +1,5 @@
 // 게시판 (일상/조사 파트): 네이버 카페 같은 글 + 댓글
-import {
-  $, $$, esc, emit, store, local, mentionHTML, render as paint, toast, isGM, charById, myChars, students, playerById,
-  avatar, spriteOf, charSelectHTML, fmtTime, speakAs, lastSprite,
-} from './core.js';
+import { $, $$, esc, emit, store, local, mentionHTML, render as paint, toast, isGM, charById, myChars, students, playerById, avatar, spriteOf, charSelectHTML, fmtTime, speakAs, lastSprite, ink, cvar } from './core.js';
 
 export const BOARDS = {
   all: '전체글보기',
@@ -70,7 +67,7 @@ function authorOf(item) {
 function authorAvatar(a, size, spriteId) {
   if (a.c) return avatar(a.c, size, spriteId);
   if (a.monokuma) return `<span class="avatar monokuma" style="width:${size}px;height:${size}px;font-size:${size * 0.5}px">🐻</span>`;
-  return `<span class="avatar" style="--c:${a.color};width:${size}px;height:${size}px;font-size:${size * 0.4}px">${a.gm ? '👑' : esc(a.name.slice(0, 1))}</span>`;
+  return `<span class="avatar" style="${cvar(a.color)};width:${size}px;height:${size}px;font-size:${size * 0.4}px">${a.gm ? '👑' : esc(a.name.slice(0, 1))}</span>`;
 }
 
 function sidebar(active) {
@@ -151,7 +148,7 @@ function listView(board) {
       <td class="title"><a href="#/post/${p.id}">${board === 'all' && !pin ? `<span class="tag ${p.board}">${BOARDS[p.board].replace(/^\S+ /, '')}</span>` : ''}${esc(p.title)}</a>
         ${p.comments.length ? `<b class="cmt">[${p.comments.length}]</b>` : ''}${isNew(p) ? ' <i class="new">N</i>' : ''}
         ${p.location ? `<span class="loc">📍${esc(p.location)}</span>` : ''}</td>
-      <td class="writer"><span style="color:${a.color}">${esc(a.name)}</span>${p.partnerId ? ` <small class="heart">♥</small> <span style="color:${charById(p.partnerId)?.color || '#999'}">${esc(charById(p.partnerId)?.name || '?')}</span>` : ''}</td>
+      <td class="writer"><span style="${ink(a.color)}">${esc(a.name)}</span>${p.partnerId ? ` <small class="heart">♥</small> <span style="${ink(charById(p.partnerId)?.color || '#999')}">${esc(charById(p.partnerId)?.name || '?')}</span>` : ''}</td>
       <td class="day">${p.day}일째</td>
       <td class="date">${fmtTime(p.ts)}</td></tr>`;
   };
@@ -188,7 +185,7 @@ function postView(p) {
       <h2>${p.pinned ? '<span class="pin">공지</span> ' : ''}${esc(p.title)}</h2>
       <div class="post-author">
         ${authorAvatar(a, 46, p.spriteId)}
-        <div><b style="color:${a.color}">${esc(a.name)}</b> ${a.c ? `<small>${esc(a.c.talent)}</small>` : ''}${partnerHTML(p)}
+        <div><b style="${ink(a.color)}">${esc(a.name)}</b> ${a.c ? `<small>${esc(a.c.talent)}</small>` : ''}${partnerHTML(p)}
           <div class="meta">${esc(a.sub)} · ${fmtTime(p.ts)} · ${p.day}일째${p.location ? ` · 📍${esc(p.location)}` : ''}${p.editedAt ? ' · 수정됨' : ''}</div></div>
         <div class="post-actions">
           ${canEdit ? `<a class="btn tiny ghost" href="#/edit/${p.id}">수정</a><button class="btn tiny ghost" data-del-post="${p.id}">삭제</button>` : ''}
@@ -213,7 +210,7 @@ function commentHTML(p, c, reply = false) {
   return `<div class="comment ${reply ? 'reply' : ''} ${a.gm ? 'gm' : ''} ${replyTo === c.id ? 'replying' : ''}">
     ${authorAvatar(a, reply ? 34 : 40, c.spriteId)}
     <div class="c-main">
-      <div class="c-who"><b style="color:${a.color}">${esc(a.name)}</b>${a.gm ? ' <b class="gm-badge">GM</b>' : a.c || a.monokuma || c.displayName ? ` <small>${esc(a.sub)}</small>` : ' <small>OOC</small>'}
+      <div class="c-who"><b style="${ink(a.color)}">${esc(a.name)}</b>${a.gm ? ' <b class="gm-badge">GM</b>' : a.c || a.monokuma || c.displayName ? ` <small>${esc(a.sub)}</small>` : ' <small>OOC</small>'}
         ${p.authorId === c.authorId && p.charId === c.charId ? '<span class="writer-badge">작성자</span>' : ''}</div>
       ${c.body ? `<div class="c-body">${mentionHTML(esc(c.body))}</div>` : ''}
       ${c.grants?.length ? `<div class="grants">${c.grants.map((g) => `<span class="grant ${g.type}">${g.type === 'bullet' ? '⚡' : g.type === 'coin' ? '🪙' : ''} ${esc(g.label)} → ${esc(g.charIds.map((id) => charById(id)?.name || '?').join(', '))}</span>`).join('')}</div>` : ''}
@@ -265,7 +262,7 @@ function partnerHTML(p) {
   const pc = charById(p.partnerId);
   if (!pc) return '';
   const aff = store.state.affinity[[p.charId, p.partnerId].sort().join('|')];
-  return ` <span class="ft-with">♥ 함께한 상대 ${avatar(pc, 22)} <b style="color:${pc.color}">${esc(pc.name)}</b>${aff ? ` · ${hearts(aff.level)}` : ''}</span>`;
+  return ` <span class="ft-with">♥ 함께한 상대 ${avatar(pc, 22)} <b style="${ink(pc.color)}">${esc(pc.name)}</b>${aff ? ` · ${hearts(aff.level)}` : ''}</span>`;
 }
 
 export function hearts(level) {

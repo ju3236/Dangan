@@ -1,5 +1,5 @@
 // 전자학생수첩: 학생 명부 / 내 캐릭터(메달·스킬·언령·소지품) / 교칙 / 지도 / 알림
-import { $, $$, esc, emit, store, local, notify, markPingsSeen, render as paint, modal, toast, isGM, charById, myChars, evidenceById, avatar, charSelectHTML, fmtTime } from './core.js';
+import { $, $$, esc, emit, store, local, notify, markPingsSeen, render as paint, modal, toast, isGM, charById, myChars, evidenceById, avatar, charSelectHTML, fmtTime, ink, cvar } from './core.js';
 import { openEditor, openProfile, charCard, bindCards } from './chars.js';
 import { hearts } from './board.js';
 import { logbookHTML, bindLogbook } from './logbook.js';
@@ -43,10 +43,10 @@ function me(args) {
     return `<div class="empty-me"><p>아직 캐릭터가 없습니다.</p><button class="btn pink" data-new>+ 첫 캐릭터 만들기</button><p class="hint">한 계정으로 캐릭터를 여러 명 만들 수 있어요.</p></div>`;
   const c = charById(args[1]) && chars.some((x) => x.id === args[1]) ? charById(args[1]) : chars.find((x) => x.mine) || chars[0];
   const bullets = (c.bullets || []).map(evidenceById).filter(Boolean);
-  return `<div class="char-chips">${chars.map((x) => `<a href="#/handbook/me/${x.id}" class="chip ${x.id === c.id ? 'active' : ''}" style="--c:${x.color}">${avatar(x, 26)} ${esc(x.name)}${x.npc ? ' <small>NPC</small>' : ''}</a>`).join('')}<button class="chip add" data-new>+ 새 캐릭터</button></div>
-    <div class="me-head" style="--c:${c.color}">
+  return `<div class="char-chips">${chars.map((x) => `<a href="#/handbook/me/${x.id}" class="chip ${x.id === c.id ? 'active' : ''}" style="${cvar(x.color)}">${avatar(x, 26)} ${esc(x.name)}${x.npc ? ' <small>NPC</small>' : ''}</a>`).join('')}<button class="chip add" data-new>+ 새 캐릭터</button></div>
+    <div class="me-head" style="${cvar(c.color)}">
       ${avatar(c, 92)}
-      <div class="grow"><div class="talent">${esc(c.talent || '초고교급 ???')}</div><h2 style="color:${c.color}">${esc(c.name)}${c.alive ? '' : ' <small class="dead-text">사망</small>'}</h2>
+      <div class="grow"><div class="talent">${esc(c.talent || '초고교급 ???')}</div><h2 style="${ink(c.color)}">${esc(c.name)}${c.alive ? '' : ' <small class="dead-text">사망</small>'}</h2>
         <div class="coins">🪙 모노쿠마 메달 <b>${c.coins ?? 0}</b> <a href="#/shop" class="btn tiny">매점 가기</a>
           <span class="ticket-count">💞 자유시간 티켓 <b>${c.tickets ?? 0}</b></span> <a href="#/handbook/report/${c.id}" class="btn tiny">통신부</a></div>
         ${c.likes || c.dislikes ? `<div class="likes">${c.likes ? `<span>💗 좋아하는 것: ${esc(c.likes)}</span>` : ''}${c.dislikes ? `<span>💢 싫어하는 것: ${esc(c.dislikes)}</span>` : ''}</div>` : ''}</div>
@@ -124,10 +124,10 @@ function report(args) {
     .map((o) => ({ o, a: s.affinity[[c.id, o.id].sort().join('|')] || { points: 0, events: 0, level: 0 } }))
     .sort((x, y) => y.a.points - x.a.points);
   const fragments = rows.reduce((n, r) => n + r.a.level, 0);
-  return `<div class="char-chips">${chars.map((x) => `<a href="#/handbook/report/${x.id}" class="chip ${x.id === c.id ? 'active' : ''}" style="--c:${x.color}">${avatar(x, 26)} ${esc(x.name)}</a>`).join('')}</div>
-    <div class="report-head" style="--c:${c.color}">
+  return `<div class="char-chips">${chars.map((x) => `<a href="#/handbook/report/${x.id}" class="chip ${x.id === c.id ? 'active' : ''}" style="${cvar(x.color)}">${avatar(x, 26)} ${esc(x.name)}</a>`).join('')}</div>
+    <div class="report-head" style="${cvar(c.color)}">
       ${avatar(c, 64)}
-      <div class="grow"><div class="talent">통신부</div><h2 style="color:${c.color}">${esc(c.name)}</h2>
+      <div class="grow"><div class="talent">통신부</div><h2 style="${ink(c.color)}">${esc(c.name)}</h2>
         <div>희망의 조각 <b class="frag">${fragments}</b>개 · 💞 남은 자유시간 티켓 <b class="tickets">${c.tickets ?? 0}</b>장</div></div>
     </div>
     <p class="hint">자유시간 1회 +${ft.eventPoints} · 선물 +${ft.giftPoints} (좋아하는 선물 ${ft.likedPoints >= 0 ? '+' : ''}${ft.likedPoints}, 싫어하는 선물 ${ft.dislikedPoints}) · ${ft.levelPoints}점마다 Lv 1 (최대 Lv.${ft.maxLevel})</p>
@@ -135,9 +135,9 @@ function report(args) {
       .map(({ o, a }) => {
         const maxed = a.level >= ft.maxLevel;
         const prog = maxed ? 100 : ((a.points % ft.levelPoints) / ft.levelPoints) * 100;
-        return `<div class="report-row ${o.alive ? '' : 'dead'}" style="--c:${o.color}">
+        return `<div class="report-row ${o.alive ? '' : 'dead'}" style="${cvar(o.color)}">
           <button class="link" data-profile="${o.id}">${avatar(o, 48)}</button>
-          <div class="grow"><b style="color:${o.color}">${esc(o.name)}</b> <small>${esc(o.talent)}</small>${o.alive ? '' : ' <small class="dead-text">사망</small>'}
+          <div class="grow"><b style="${ink(o.color)}">${esc(o.name)}</b> <small>${esc(o.talent)}</small>${o.alive ? '' : ' <small class="dead-text">사망</small>'}
             <div class="row">${hearts(a.level)} <small>Lv.${a.level} · ${a.points}점 · 자유시간 ${a.events}회</small></div>
             <div class="aff-bar"><i style="width:${prog}%"></i></div></div>
           <div class="stack">

@@ -1,5 +1,5 @@
 // 전체 화면 연출: 클라이맥스 추리 재생, 오시오키
-import { esc, charById, spriteOf } from './core.js';
+import { esc, charById, spriteOf, cvar } from './core.js';
 import { overrideBGM, se } from './audio.js';
 
 let current = null;
@@ -55,7 +55,7 @@ export function playClimax({ panels }) {
 export function playExecution({ charId, title, scenes }) {
   const c = charById(charId);
   const s = spriteOf(c);
-  const portrait = s ? `<img class="exec-sprite" src="${esc(s.img)}" alt="">` : `<div class="exec-initial" style="--c:${c?.color || '#f33'}">${esc((c?.name || '?').slice(0, 1))}</div>`;
+  const portrait = s ? `<img class="exec-sprite" src="${esc(s.img)}" alt="">` : `<div class="exec-initial" style="${cvar(c?.color || '#f33')}">${esc((c?.name || '?').slice(0, 1))}</div>`;
   const frames = [
     { cls: 'gameover', html: `<b>GAME OVER</b><span>${esc(c?.name || '')} 이(가) 쿠로로 결정되었습니다.<br>오시오키를 시작합니다!</span>`, ms: 3800 },
     { cls: 'exec-title', html: `${portrait}<div class="exec-name"><small>PUNISHMENT TIME</small>${esc(title)}</div>`, ms: 4200 },

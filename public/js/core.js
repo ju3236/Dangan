@@ -82,9 +82,36 @@ export function spriteOf(c, spriteId) {
   return c.sprites.find((s) => s.id === spriteId) || c.sprites[0];
 }
 
+// 캐릭터 색이 아주 밝거나 어두우면 어느 배경에서도 읽히도록 반대색 테두리 그림자를 준다
+function luminance(color) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(color || ''));
+  if (!m) return 0.5;
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+export function halo(color) {
+  const l = luminance(color);
+  const edge = (c) => `-1px -1px 0 ${c}, 1px -1px 0 ${c}, -1px 1px 0 ${c}, 1px 1px 0 ${c}, 0 0 2px ${c}`;
+  if (l > 0.7) return edge('#222');
+  if (l < 0.05) return edge('#e8e4ee');
+  return 'none';
+}
+// 이름 글자에: style="${ink(c.color)}"
+export const ink = (color) => `color:${color};text-shadow:${halo(color)}`;
+// --c를 쓰는 요소에: style="${cvar(c.color)}" (아주 어두운 색이면 아바타 바탕·테두리를 밝게)
+export const cvar = (color) => `--c:${color};--halo:${halo(color)}${luminance(color) < 0.05 ? ';--abg:#ece8f2;--cb:#8a8496;--on:#fff' : ''}`;
+// style 속성 문자열 대신 요소에 직접 넣을 때
+export function setCvar(el, color) {
+  el.style.cssText = el.style.cssText.replace(/--(c|halo|abg|cb|on):[^;]*;?/g, '');
+  cvar(color).split(';').forEach((kv) => {
+    const i = kv.indexOf(':');
+    el.style.setProperty(kv.slice(0, i), kv.slice(i + 1));
+  });
+}
+
 export function avatar(c, size = 44, spriteId = null, cls = '') {
   const s = spriteOf(c, spriteId);
-  const style = `--c:${c?.color || '#777'};width:${size}px;height:${size}px`;
+  const style = `${cvar(c?.color || '#777')};width:${size}px;height:${size}px`;
   const dead = c && !c.alive ? ' dead' : '';
   if (s) return `<img class="avatar${dead} ${cls}" style="${style}" src="${esc(s.img)}" alt="" loading="lazy">`;
   return `<span class="avatar${dead} ${cls}" style="${style};font-size:${Math.round(size * 0.45)}px">${esc((c?.name || '?').slice(0, 1))}</span>`;

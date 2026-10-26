@@ -1,5 +1,5 @@
 // GM 사건 기획: 피해자/흑막 추첨 → 사건 파일(AI) → 메일 발송 → 단서 지급 → 시체 발견
-import { $, $$, esc, emit, store, render as paint, toast, charById, avatar, weakHTML, fmtTime } from './core.js';
+import { $, $$, esc, emit, store, render as paint, toast, charById, avatar, weakHTML, fmtTime, ink, cvar } from './core.js';
 
 let viewingId = null; // 지난 사건 열람
 let promptText = '';
@@ -78,7 +78,7 @@ function steps(c) {
 
 function person(c, role, caseObj) {
   const ch = charById(c);
-  return `<div class="case-person ${role}" style="--c:${ch?.color || '#777'}">
+  return `<div class="case-person ${role}" style="${cvar(ch?.color || '#777')}">
     <span class="role">${role === 'victim' ? '피해자' : '흑막'}</span>
     ${avatar(ch, 64)}<b>${esc(ch?.name || '(삭제됨)')}</b><small>${esc(ch?.talent || '')}</small>
     ${caseObj.sentAt || caseObj.status === 'closed' ? '' : `<button class="btn tiny ghost" data-reroll="${role}">다시 뽑기</button>`}
@@ -114,7 +114,7 @@ function sealedInvestigation(c) {
     const ev = store.state.evidence.find((e) => e.id === c.clueGiven?.[i]);
     return ev ? ev.holders.map((id) => charById(id)?.name).filter(Boolean) : [];
   };
-  return `<p>💀 피해자: <b style="color:${v?.color}">${esc(v?.name || '?')}</b></p>
+  return `<p>💀 피해자: <b style="${ink(v?.color)}">${esc(v?.name || '?')}</b></p>
     <section><h3>모노쿠마 파일</h3><pre class="mk-file">${esc(f.monokumaFile)}</pre></section>
     <section><h3>단서 <small>조사 글을 보고 맞는 단서를 지급하세요. 어떤 게 핵심인지는 봉인되어 있어요.</small></h3>
       <div class="clue-list">${f.clues.map((cl, i) => clueRow(cl, i, evHolders(i))).join('')}</div></section>
