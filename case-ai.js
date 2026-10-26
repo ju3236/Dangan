@@ -106,6 +106,50 @@ function buildContext(room, { victimId, culpritId, difficulty, notes }) {
   return lines.join('\n');
 }
 
+// API 없이 쓸 때: claude.ai 채팅에 붙여넣을 요청문
+function buildPrompt(room, opts) {
+  const schema = JSON.stringify(z.toJSONSchema(CaseSchema), null, 1);
+  return `${SYSTEM}
+
+${buildContext(room, opts)}
+
+## 출력 형식
+아래 JSON 스키마를 따르는 JSON 객체 하나만 \`\`\`json 코드 블록으로 출력하세요. 설명이나 다른 글은 쓰지 마세요.
+${schema}`;
+}
+
+// 붙여넣은 텍스트에서 JSON을 꺼내 형식 검사. 치명적이지 않은 문제는 warnings로
+function parseCaseText(text) {
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text);
+  let raw = fenced ? fenced[1] : text;
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start < 0 || end < start) return { error: 'JSON을 찾지 못했습니다. AI 답변 전체를 붙여넣어 주세요.' };
+  let data;
+  try {
+    data = JSON.parse(raw.slice(start, end + 1));
+  } catch (e) {
+    return { error: `JSON 형식이 올바르지 않습니다: ${e.message}` };
+  }
+  const res = CaseSchema.safeParse(data);
+  if (!res.success) {
+    const issues = res.error.issues.slice(0, 6).map((i) => `${i.path.join('.') || '(전체)'}: ${i.message}`);
+    return { error: `사건 파일 형식이 맞지 않습니다.\n${issues.join('\n')}` };
+  }
+  return { file: res.data, warnings: checkCase(res.data) };
+}
+
+// 페어플레이 점검: 재판 논점의 정답 언령이 단서 목록에 있는지 등
+function checkCase(file) {
+  const names = new Set(file.clues.map((c) => c.name));
+  const warnings = [];
+  file.trialPoints.forEach((t, i) => {
+    if (!names.has(t.answerClue)) warnings.push(`재판 논점 ${i + 1}의 정답 언령 「${t.answerClue}」이(가) 단서 목록에 없습니다.`);
+  });
+  if (!file.clues.some((c) => c.kind === '핵심')) warnings.push('핵심 단서가 하나도 없습니다.');
+  return warnings;
+}
+
 async function generateCase(room, opts) {
   if (!hasKey()) throw new Error('서버에 ANTHROPIC_API_KEY가 설정되어 있지 않습니다.');
   const stream = getClient().beta.messages.stream({
@@ -124,7 +168,7 @@ async function generateCase(room, opts) {
   return msg.parsed_output;
 }
 
-module.exports = { generateCase, hasKey, CaseSchema };
+module.exports = { generateCase, buildPrompt, parseCaseText, checkCase, hasKey, CaseSchema };
 
 // API 오류를 GM에게 보여줄 한국어 문장으로
 function describeError(e) {

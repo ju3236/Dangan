@@ -1,6 +1,7 @@
 // GM 관리 화면
 import { $, $$, esc, emit, store, render as paint, toast, isGM, charById, avatar, uploadImage, download, PHASES } from './core.js';
 import { openEditor, openProfile } from './chars.js';
+import { renderCase, gmNav } from './casefile.js';
 
 let shopRows = null; // 편집 중인 매점 상품 id 목록 (null이면 서버 상태 그대로)
 
@@ -10,6 +11,7 @@ export function render(el, name, args, what) {
     el.innerHTML = '<p class="hint pad">GM만 볼 수 있는 화면입니다.</p>';
     return;
   }
+  if (args[0] === 'case') return renderCase(el);
   const s = store.state;
   const chars = s.characters;
   const checks = (prefix, checked = []) =>
@@ -19,7 +21,7 @@ export function render(el, name, args, what) {
 
   paint(
     el,
-    `<div class="gm">
+    `${gmNav('main')}<div class="gm">
     <section class="gm-card"><h2>진행</h2>
       <div class="phase-btns">${Object.entries(PHASES).map(([k, l]) => `<button class="btn ${s.phase === k ? 'pink' : ''}" data-phase="${k}">${l}</button>`).join('')}</div>
       <div class="row wrap"><button class="btn small" data-day="-1">◀ 전날</button><b>${s.day}일째</b><button class="btn small" data-day="1">다음 날 ▶</button>

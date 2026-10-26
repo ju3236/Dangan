@@ -1,14 +1,14 @@
 // 전자학생수첩: 학생 명부 / 내 캐릭터(메달·스킬·언령·소지품) / 교칙 / 지도 / 알림
-import { $, $$, esc, emit, store, render as paint, modal, isGM, charById, myChars, evidenceById, avatar, charSelectHTML, fmtTime } from './core.js';
+import { $, $$, esc, emit, store, render as paint, modal, toast, isGM, charById, myChars, evidenceById, avatar, charSelectHTML, fmtTime } from './core.js';
 import { openEditor, openProfile, charCard, bindCards } from './chars.js';
 import { hearts } from './board.js';
 
-const TABS = { roster: '학생 명부', me: '내 캐릭터', report: '통신부', rules: '교칙', map: '지도', notices: '알림' };
+const TABS = { roster: '학생 명부', me: '내 캐릭터', mail: '메일', report: '통신부', rules: '교칙', map: '지도', notices: '알림' };
 
 export function render(el, name, args, what) {
   if (what && what.startsWith('trial')) return;
   const tab = TABS[args[0]] ? args[0] : 'roster';
-  const body = { roster, me, report, rules, map, notices }[tab](args);
+  const body = { roster, me, mail, report, rules, map, notices }[tab](args);
   render2(el, tab, body);
   bind(el, tab, args);
 }
@@ -19,7 +19,7 @@ function render2(el, tab, body) {
     `<div class="handbook">
       <div class="hb-frame">
         <div class="hb-top"><span>📱 전자학생수첩</span><span>${esc(store.state.title)} · ${store.state.day}일째</span></div>
-        <nav class="hb-tabs">${Object.entries(TABS).map(([k, l]) => `<a href="#/handbook/${k}" class="${k === tab ? 'active' : ''}">${l}</a>`).join('')}</nav>
+        <nav class="hb-tabs">${Object.entries(TABS).map(([k, l]) => `<a href="#/handbook/${k}" class="${k === tab ? 'active' : ''}">${l}${k === 'mail' && unreadCount() ? ` <i class="nav-badge">${unreadCount()}</i>` : ''}</a>`).join('')}</nav>
         <div class="hb-body">${body}</div>
       </div>
     </div>`
@@ -68,6 +68,47 @@ function me(args) {
           <div class="stack"><button class="btn tiny" data-give="${i.id}">선물</button><button class="btn tiny ghost" data-use="${i.id}">사용</button></div></div>`).join('') || '<p class="hint">소지품이 없습니다. 매점이나 모노모노 머신에서 얻을 수 있어요.</p>'}</div>
       </section>
     </div>`;
+}
+
+// 메일함: 모노쿠마(또는 GM)가 보낸 비밀 메일. 받은 캐릭터의 주인과 GM만 볼 수 있다
+export const unreadCount = () => (store.state?.mails || []).filter((m) => !m.read && charById(m.charId)?.mine).length;
+
+function mail() {
+  const s = store.state;
+  const gm = isGM();
+  const list = s.mails.slice().reverse();
+  const compose = gm
+    ? `<details class="mail-compose" id="mailCompose"><summary>✉️ 메일 보내기 (GM)</summary>
+        <div class="stack">
+          <div class="chks">${s.characters.map((c) => `<label class="chk"><input type="checkbox" id="mto-${c.id}">${esc(c.name)}</label>`).join('')}</div>
+          <div class="row"><input id="mFrom" value="모노쿠마" maxlength="30" style="width:140px"><input id="mSubject" placeholder="제목" maxlength="100" class="grow"></div>
+          <textarea id="mBody" rows="5" placeholder="내용"></textarea>
+          <div class="row end"><button class="btn small pink" id="mSend">보내기</button></div>
+        </div></details>`
+    : '';
+  return `<h2>메일함</h2>
+    ${compose}
+    <p class="hint">${gm ? 'GM은 모든 캐릭터의 메일을 볼 수 있습니다.' : '내 캐릭터에게 온 비밀 메일입니다. 다른 사람에게는 보이지 않아요.'}</p>
+    <ul class="mail-list">${list
+      .map((m) => {
+        const c = charById(m.charId);
+        return `<li class="${m.read ? '' : 'unread'} ${m.kind || ''}" data-mail="${m.id}">
+          ${avatar(c, 34)}<div class="grow"><div><b>${esc(m.subject)}</b></div><small>${esc(m.from)} → ${esc(c?.name || '?')} · ${fmtTime(m.ts)}</small></div>
+          ${m.read ? '' : '<i class="nav-badge">N</i>'}</li>`;
+      })
+      .join('') || '<p class="hint">메일이 없습니다.</p>'}</ul>`;
+}
+
+function openMail(id) {
+  const m = store.state.mails.find((x) => x.id === id);
+  if (!m) return;
+  const c = charById(m.charId);
+  modal(`<div class="mail-view ${m.kind || ''}">
+    <div class="mail-from">📩 From. ${esc(m.from)} → ${esc(c?.name || '?')}<small>${fmtTime(m.ts)}</small></div>
+    <h2>${esc(m.subject)}</h2>
+    <div class="mail-body">${esc(m.body)}</div>
+  </div>`, { wide: true });
+  if (!m.read && c?.mine) emit('mail:read', { id });
 }
 
 // 통신부: 내 캐릭터와 다른 학생들의 친밀도
@@ -140,6 +181,18 @@ function bind(el, tab, args) {
   $$('[data-give]', el).forEach((b) => (b.onclick = () => pickTarget('누구에게 선물할까요?', charId, (toId) => emit('item:give', { fromId: charId, toId, invId: b.dataset.give }))));
   const reportChar = tab === 'report' ? $('.chip.active', el)?.getAttribute('href')?.split('/').pop() : null;
   $$('[data-gift-to]', el).forEach((b) => (b.onclick = () => pickGift(reportChar, b.dataset.giftTo)));
+  $$('[data-mail]', el).forEach((li) => (li.onclick = () => openMail(li.dataset.mail)));
+  const ms = $('#mSend', el);
+  if (ms)
+    ms.onclick = async () => {
+      const charIds = $$('[id^="mto-"]', el).filter((x) => x.checked).map((x) => x.id.slice(4));
+      if (await emit('gm:mail', { charIds, from: $('#mFrom').value, subject: $('#mSubject').value, body: $('#mBody').value })) {
+        $('#mSubject').value = '';
+        $('#mBody').value = '';
+        $$('[id^="mto-"]', el).forEach((x) => (x.checked = false));
+        toast('메일을 보냈습니다.');
+      }
+    };
   $$('[data-share]', el).forEach((b) => (b.onclick = () => pickTarget('누구에게 언령을 공유할까요?', charId, (toId) => emit('evidence:share', { fromId: charId, toId, id: b.dataset.share }))));
 }
 

@@ -316,7 +316,14 @@ function renderSide(scrollTop = false, newMsg = false) {
   $$('#sideTabs [data-side]').forEach((b) => b.classList.toggle('active', b.dataset.side === sideTab));
   const atBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 80;
   if (!body.childElementCount) scrollTop = true;
-  const html = { log: logHTML, bullets: bulletsHTML, skills: skillsHTML, vote: voteHTML }[sideTab]();
+  // GM에게만 「사건」 탭 (사건 파일의 재판 논점 참고용)
+  const tabs = $('#sideTabs');
+  if (isGM() && !$('[data-side=case]', tabs)) tabs.insertAdjacentHTML('beforeend', '<button data-side="case">사건</button>');
+  if (!isGM()) {
+    $('[data-side=case]', tabs)?.remove();
+    if (sideTab === 'case') sideTab = 'log';
+  }
+  const html = { log: logHTML, bullets: bulletsHTML, skills: skillsHTML, vote: voteHTML, case: caseHTML }[sideTab]();
   paint(body, html);
   if (sideTab === 'log' && (scrollTop || (newMsg && atBottom))) body.scrollTop = body.scrollHeight;
   bindSide(body);
@@ -359,6 +366,22 @@ function logHTML() {
       .join('') +
     `<div class="row end log-tools"><button class="btn tiny ghost" id="saveLog">로그 저장</button>${gm ? '<button class="btn tiny ghost" id="clearLog">로그 비우기</button>' : ''}</div>`
   );
+}
+
+function caseHTML() {
+  const c = [...(store.state.cases || [])].reverse().find((x) => x.file && x.status !== 'closed');
+  if (!c) return '<p class="hint">진행 중인 사건 파일이 없습니다. GM → 사건 기획에서 만들 수 있어요.</p>';
+  const f = c.file;
+  return `<h4>🔪 ${esc(f.title)}</h4>
+    <p class="hint">흑막: ${esc(charById(c.culpritId)?.name || '?')} · 피해자: ${esc(charById(c.victimId)?.name || '?')}</p>
+    <p class="hint">발언할 때 「정답 언령」을 고르면 자동 판정됩니다. 아래 논점 순서대로 진행해 보세요.</p>
+    ${f.trialPoints
+      .map((t, i) => `<div class="tp-card"><b>${i + 1}. ${esc(t.topic)}</b><div class="claim">“${weakHTML(t.falseClaim, '', false)}”</div>
+        <div>정답 ⚡ <b>${esc(t.answerClue)}</b>${store.state.evidence.some((e) => e.name === t.answerClue) ? '' : ' <small class="warn">(아직 지급 안 됨)</small>'}</div>
+        <small>${esc(t.explanation)}</small>
+        <button class="btn tiny" data-usepoint="${i}">발언칸에 넣기</button></div>`)
+      .join('')}
+    <h4>GM 메모</h4><ul class="gm-notes">${f.gmNotes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>`;
 }
 
 function bulletsHTML() {
@@ -436,6 +459,16 @@ function bindSide(body) {
       })
   );
   $$('[data-show-none] [data-ev]', body).forEach((x) => (x.onclick = () => showClue(x.dataset.ev)));
+  $$('[data-usepoint]', body).forEach((b) => {
+    b.onclick = () => {
+      const c = [...(store.state.cases || [])].reverse().find((x) => x.file && x.status !== 'closed');
+      const t = c.file.trialPoints[+b.dataset.usepoint];
+      $('#tText').value = t.falseClaim;
+      const ev = store.state.evidence.find((e) => e.name === t.answerClue);
+      if (ev && $('#tAnswer')) $('#tAnswer').value = ev.id;
+      $('#tText').focus();
+    };
+  });
   $$('[data-judge]', body).forEach((b) => (b.onclick = () => emit('trial:judge', { msgId: b.dataset.judge, ok: !!b.dataset.ok })));
   $$('[data-skill]', body).forEach((b) => {
     b.onclick = async () => {

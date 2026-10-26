@@ -8,6 +8,7 @@ const http = require('http');
 const crypto = require('crypto');
 const express = require('express');
 const { Server } = require('socket.io');
+const caseAI = require('./case-ai');
 
 const PORT = process.env.PORT || 3000;
 const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, 'data', 'rooms.json');
@@ -119,6 +120,8 @@ function createRoom(code, title) {
     trial: { messages: [], voting: false, revealed: false, votes: {} },
     freeTime: { ...FREE_TIME_DEFAULTS },
     affinity: {},
+    cases: [],
+    mails: [],
   };
 }
 
@@ -126,6 +129,9 @@ function createRoom(code, title) {
 function migrate(room) {
   room.freeTime = { ...FREE_TIME_DEFAULTS, ...(room.freeTime || {}) };
   room.affinity = room.affinity || {};
+  room.cases = room.cases || [];
+  room.cases.forEach((c) => (c.generating = false));
+  room.mails = room.mails || [];
   Object.values(room.characters || {}).forEach((c) => {
     if (typeof c.tickets !== 'number') c.tickets = room.freeTime.ticketsPerDay;
     c.likes = c.likes || '';
@@ -197,6 +203,9 @@ function publicState(room, pid) {
     notices: room.notices.filter((n) => canSeeChars(room, pid, n.charIds)).slice(-100),
     shop: room.shop,
     freeTime: room.freeTime,
+    mails: room.mails.filter((m) => canSeeChars(room, pid, [m.charId])),
+    cases: gm ? room.cases : undefined,
+    caseAI: gm ? caseAI.hasKey() : undefined,
     affinity: Object.fromEntries(
       Object.entries(room.affinity)
         .filter(([k]) => gm || canSeeChars(room, pid, k.split('|')))
@@ -253,6 +262,25 @@ function trialUpdate(room, m) {
 
 function splash(room, data) {
   io.to(room.code).emit('splash', data);
+}
+
+function bodyDiscovered(room, pid, text) {
+  room.phase = 'investigation';
+  room.posts.push({
+    id: uid(), no: ++room.postSeq, board: 'notice', day: room.day, location: '', charId: null, spriteId: null,
+    authorId: pid, monokuma: true, title: '시체가 발견되었습니다!',
+    body: text || '시체가 발견되었습니다! 일정 시간의 「수사」 후, 「학급재판」을 시작합니다!\n학생 여러분은 조사 게시판에 수사 내용을 올려 주세요.',
+    ts: Date.now(), editedAt: null, pinned: true, comments: [],
+  });
+  notice(room, '📺 시체가 발견되었습니다! 조사 파트가 시작됩니다.', [], { kind: 'phase' });
+  splash(room, { kind: 'body' });
+}
+
+function sendMail(room, charId, subject, body, extra = {}) {
+  const m = { id: uid(), charId, from: extra.from || '모노쿠마', subject, body, ts: Date.now(), read: false, ...extra };
+  room.mails.push(m);
+  notice(room, `📩 ${room.characters[charId]?.name || ''} 의 학생수첩에 새 메일이 도착했습니다.`, [charId], { kind: 'mail' });
+  return m;
 }
 
 function grantItem(c, item, qty = 1) {
@@ -346,8 +374,16 @@ io.on('connection', (socket) => {
       if (opt.auth !== false && !room) return reply({ error: '방에 입장하지 않았습니다.' });
       if (opt.gm && !isGM()) return reply({ error: 'GM만 할 수 있습니다.' });
       try {
-        fn(data, reply);
-        reply({ ok: true });
+        const r = fn(data, reply);
+        if (r && typeof r.then === 'function')
+          r.then(
+            () => reply({ ok: true }),
+            (e) => {
+              console.error(ev, e);
+              reply({ error: caseAI.describeError(e) });
+            }
+          );
+        else reply({ ok: true });
       } catch (e) {
         console.error(ev, e);
         reply({ error: '서버 오류가 발생했습니다.' });
@@ -785,6 +821,220 @@ io.on('connection', (socket) => {
     { gm: true }
   );
 
+  // ---------- 메일 ----------
+  on('mail:read', ({ id }) => {
+    const m = room.mails.find((x) => x.id === id);
+    if (!m || !ownChar(m.charId)) return;
+    if (room.characters[m.charId].ownerId !== pid) return; // GM이 열람해도 읽음 처리하지 않음
+    m.read = true;
+    broadcast(room);
+  });
+
+  on(
+    'gm:mail',
+    ({ charIds, subject, body, from }, reply) => {
+      const targets = arr(charIds, 50).filter((id) => room.characters[id]);
+      subject = str(subject, 100).trim();
+      if (!targets.length || !subject) return reply({ error: '받는 캐릭터와 제목을 정하세요.' });
+      targets.forEach((id) => sendMail(room, id, subject, str(body, 10000), { from: str(from, 30).trim() || '모노쿠마' }));
+      broadcast(room);
+    },
+    { gm: true }
+  );
+
+  // ---------- 사건 기획 (GM 전용) ----------
+  const findCase = (id) => room.cases.find((c) => c.id === id);
+  const drawPool = (excludeGM) =>
+    Object.values(room.characters).filter((c) => c.alive && !c.npc && !(excludeGM && c.ownerId === room.gmId));
+  const pick = (list) => list[crypto.randomInt(list.length)];
+
+  on(
+    'case:draw',
+    (d, reply) => {
+      const pool = drawPool(!!d.excludeGM);
+      const victim = room.characters[d.victimId] || (pool.length ? pick(pool) : null);
+      const rest = pool.filter((c) => c !== victim);
+      const culprit = room.characters[d.culpritId] || (rest.length ? pick(rest) : null);
+      if (!victim || !culprit || victim === culprit) return reply({ error: '추첨할 수 있는 학생이 2명 이상 필요합니다.' });
+      room.cases.forEach((c) => c.status === 'draft' && !c.file && (c.status = 'closed'));
+      const c = {
+        id: uid(), status: 'draft', createdAt: Date.now(), day: room.day, victimId: victim.id, culpritId: culprit.id,
+        excludeGM: !!d.excludeGM, difficulty: str(d.difficulty, 20) || '보통', notes: str(d.notes, 1000), file: null, warnings: [],
+        clueGiven: {}, sentAt: null, bodyAt: null,
+      };
+      room.cases.push(c);
+      broadcast(room);
+      reply({ id: c.id });
+    },
+    { gm: true }
+  );
+
+  on(
+    'case:reroll',
+    ({ id, which }, reply) => {
+      const c = findCase(id);
+      if (!c || c.sentAt) return reply({ error: '메일을 보낸 뒤에는 바꿀 수 없습니다.' });
+      const pool = drawPool(c.excludeGM);
+      if (which === 'victim' || which === 'both') {
+        const opts = pool.filter((x) => x.id !== c.culpritId && (which === 'both' || x.id !== c.victimId));
+        if (opts.length) c.victimId = pick(opts).id;
+      }
+      if (which === 'culprit' || which === 'both') {
+        const opts = pool.filter((x) => x.id !== c.victimId && (which === 'both' || x.id !== c.culpritId));
+        if (opts.length) c.culpritId = pick(opts).id;
+      }
+      c.file = null;
+      c.warnings = [];
+      broadcast(room);
+    },
+    { gm: true }
+  );
+
+  on(
+    'case:settings',
+    ({ id, difficulty, notes }) => {
+      const c = findCase(id);
+      if (!c) return;
+      c.difficulty = str(difficulty, 20) || c.difficulty;
+      c.notes = str(notes, 1000);
+      broadcast(room);
+    },
+    { gm: true }
+  );
+
+  on(
+    'case:prompt',
+    ({ id }, reply) => {
+      const c = findCase(id);
+      if (!c) return reply({ error: '사건을 찾을 수 없습니다.' });
+      reply({ prompt: caseAI.buildPrompt(room, c) });
+    },
+    { gm: true }
+  );
+
+  on(
+    'case:import',
+    ({ id, text }, reply) => {
+      const c = findCase(id);
+      if (!c) return reply({ error: '사건을 찾을 수 없습니다.' });
+      const res = caseAI.parseCaseText(str(text, 300000));
+      if (res.error) return reply({ error: res.error });
+      c.file = res.file;
+      c.warnings = res.warnings;
+      c.clueGiven = {};
+      broadcast(room);
+      reply({ ok: true, warnings: res.warnings });
+    },
+    { gm: true }
+  );
+
+  on(
+    'case:generate',
+    async ({ id }, reply) => {
+      const c = findCase(id);
+      if (!c) return reply({ error: '사건을 찾을 수 없습니다.' });
+      if (c.generating) return reply({ error: '이미 생성 중입니다.' });
+      c.generating = true;
+      broadcast(room);
+      try {
+        const file = await caseAI.generateCase(room, c);
+        c.file = file;
+        c.warnings = caseAI.checkCase(file);
+        c.clueGiven = {};
+      } finally {
+        c.generating = false;
+        broadcast(room);
+      }
+      reply({ ok: true, warnings: c.warnings });
+    },
+    { gm: true }
+  );
+
+  on(
+    'case:update',
+    ({ id, file }, reply) => {
+      const c = findCase(id);
+      if (!c) return reply({ error: '사건을 찾을 수 없습니다.' });
+      const res = caseAI.CaseSchema.safeParse(file);
+      if (!res.success) return reply({ error: `형식 오류: ${res.error.issues.slice(0, 3).map((i) => `${i.path.join('.')}: ${i.message}`).join(' / ')}` });
+      c.file = res.data;
+      c.warnings = caseAI.checkCase(res.data);
+      broadcast(room);
+    },
+    { gm: true }
+  );
+
+  on(
+    'case:send',
+    ({ id }, reply) => {
+      const c = findCase(id);
+      if (!c?.file) return reply({ error: '사건 파일이 없습니다.' });
+      if (!room.characters[c.victimId] || !room.characters[c.culpritId]) return reply({ error: '피해자나 흑막 캐릭터가 삭제되었습니다.' });
+      const f = c.file;
+      const timeline = f.timeline.map((t) => `· ${t.time} — ${t.event}`).join('\n');
+      sendMail(room, c.culpritId, f.culpritMail.subject, `${f.culpritMail.body}\n\n──── 사건 경위 ────\n${timeline}`, { caseId: c.id, kind: 'culprit' });
+      sendMail(room, c.victimId, f.victimMail.subject, f.victimMail.body, { caseId: c.id, kind: 'victim' });
+      c.sentAt = Date.now();
+      c.status = 'sent';
+      broadcast(room);
+    },
+    { gm: true }
+  );
+
+  on(
+    'case:clue',
+    ({ id, index, charIds }, reply) => {
+      const c = findCase(id);
+      const clue = c?.file?.clues[index];
+      const targets = arr(charIds, 50).filter((x) => room.characters[x]);
+      if (!clue || !targets.length) return reply({ error: '받을 캐릭터를 고르세요.' });
+      // 같은 단서는 같은 언령으로 지급 (재판 정답 선택이 쉽도록)
+      let ev = room.evidence[c.clueGiven[index]];
+      if (!ev) {
+        ev = { id: uid(), name: clue.name, desc: clue.desc, location: clue.location, day: room.day, ts: Date.now() };
+        room.evidence[ev.id] = ev;
+        c.clueGiven[index] = ev.id;
+      }
+      targets.forEach((x) => grantBullet(room.characters[x], ev.id));
+      notice(room, `${charNames(room, targets)} — 언령 「${ev.name}」 을(를) 입수했다!`, targets, { kind: 'bullet' });
+      broadcast(room);
+    },
+    { gm: true }
+  );
+
+  on(
+    'case:body',
+    ({ id }, reply) => {
+      const c = findCase(id);
+      if (!c?.file) return reply({ error: '사건 파일이 없습니다.' });
+      const v = room.characters[c.victimId];
+      if (v) v.alive = false;
+      bodyDiscovered(room, pid, `시체가 발견되었습니다! 일정 시간의 「수사」 후, 「학급재판」을 시작합니다!\n\n━━ 모노쿠마 파일 ━━\n${c.file.monokumaFile}`);
+      c.bodyAt = Date.now();
+      broadcast(room);
+    },
+    { gm: true }
+  );
+
+  on(
+    'case:close',
+    ({ id }) => {
+      const c = findCase(id);
+      if (c) c.status = 'closed';
+      broadcast(room);
+    },
+    { gm: true }
+  );
+
+  on(
+    'case:delete',
+    ({ id }) => {
+      room.cases = room.cases.filter((c) => c.id !== id);
+      broadcast(room);
+    },
+    { gm: true }
+  );
+
   // ---------- 매점 ----------
   on(
     'shop:save',
@@ -1003,15 +1253,7 @@ io.on('connection', (socket) => {
   on(
     'gm:body',
     ({ text }) => {
-      room.phase = 'investigation';
-      room.posts.push({
-        id: uid(), no: ++room.postSeq, board: 'notice', day: room.day, location: '', charId: null, spriteId: null,
-        authorId: pid, monokuma: true, title: '시체가 발견되었습니다!',
-        body: str(text, 5000) || '시체가 발견되었습니다! 일정 시간의 「수사」 후, 「학급재판」을 시작합니다!\n학생 여러분은 조사 게시판에 수사 내용을 올려 주세요.',
-        ts: Date.now(), editedAt: null, pinned: true, comments: [],
-      });
-      notice(room, '📺 시체가 발견되었습니다! 조사 파트가 시작됩니다.', [], { kind: 'phase' });
-      splash(room, { kind: 'body' });
+      bodyDiscovered(room, pid, str(text, 5000));
       broadcast(room);
     },
     { gm: true }

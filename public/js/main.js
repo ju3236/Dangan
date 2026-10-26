@@ -3,6 +3,7 @@ import { $, $$, esc, socket, store, emit, local, toast, PHASES } from './core.js
 import * as board from './board.js';
 import * as trial from './trial.js';
 import * as handbook from './handbook.js';
+import { unreadCount } from './handbook.js';
 import * as shop from './shop.js';
 import * as gm from './gm.js';
 
@@ -157,6 +158,8 @@ function renderTop() {
   pb.className = 'phase-badge ' + s.phase;
   $('#tUser').innerHTML = `${esc(s.me.nickname)}${s.me.isGM ? ' <b class="gm-badge">GM</b>' : ''}`;
   $$('.gm-only').forEach((el) => el.classList.toggle('hidden', !s.me.isGM));
+  const n = unreadCount();
+  $('[data-nav=handbook]').innerHTML = `📱 학생수첩${n ? ` <i class="nav-badge">${n}</i>` : ''}`;
   document.title = `${s.title} — ${PHASES[s.phase]}`;
   document.body.dataset.phase = s.phase;
 }

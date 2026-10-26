@@ -558,3 +558,84 @@ button.link { background: none; border: 0; color: inherit; cursor: pointer; padd
 .splash.fragment .word { color: #fff; --sc: var(--pink); font-size: clamp(44px, 10vw, 110px); }
 .toast.affinity { border-left-color: #ff7eb3; }
 .notice-list li.affinity, .notice-list li.gift { border-color: #ff7eb3; }
+
+/* ---------- 메일함 ---------- */
+.nav-badge { display: inline-block; min-width: 16px; padding: 0 4px; border-radius: 8px; background: var(--red); color: #fff; font: 900 10px/16px sans-serif; text-align: center; font-style: normal; vertical-align: middle; }
+.mail-list { list-style: none; padding: 0; margin: 10px 0 0; display: flex; flex-direction: column; gap: 4px; }
+.mail-list li { display: flex; gap: 10px; align-items: center; padding: 9px 12px; background: #13232c; border-left: 3px solid #2ad4c8; cursor: pointer; }
+.mail-list li:hover { background: #193340; }
+.mail-list li.unread b { color: #fff; }
+.mail-list li:not(.unread) { opacity: .75; }
+.mail-list li.culprit { border-left-color: var(--red); }
+.mail-list li.victim { border-left-color: #888; }
+.mail-list small { color: var(--muted); }
+.mail-compose { background: #13232c; padding: 8px 12px; margin: 10px 0; }
+.mail-compose summary { cursor: pointer; font-weight: 700; color: #2ad4c8; }
+.mail-view { border-top: 6px solid #2ad4c8; padding-top: 10px; }
+.mail-view.culprit { border-top-color: var(--red); }
+.mail-from { color: var(--muted); font-size: 13px; display: flex; justify-content: space-between; gap: 10px; }
+.mail-view h2 { margin: 6px 0 14px; }
+.mail-body { white-space: pre-wrap; line-height: 1.8; background: #0b0b10; padding: 16px; border: 1px solid var(--line); }
+.toast.mail { border-left-color: #2ad4c8; }
+
+/* ---------- 사건 기획 ---------- */
+.gm-nav { display: flex; gap: 4px; max-width: 1300px; margin: 14px auto 0; padding: 0 16px; }
+.gm-nav a { padding: 7px 16px; background: var(--panel2); color: var(--muted); font-weight: 700; }
+.gm-nav a.active { background: var(--yellow); color: #000; }
+.case-page { max-width: 1100px; margin: 0 auto; padding: 0 16px 40px; display: flex; flex-direction: column; gap: 14px; }
+.case-page .gm-nav { padding: 0; margin-top: 14px; }
+.spoiler-warn { margin: 0; color: var(--orange); font-size: 13px; }
+.case-card h3 { color: var(--yellow); }
+.case-steps { display: flex; gap: 4px; padding: 0; margin: 0; list-style: none; flex-wrap: wrap; }
+.case-steps li { padding: 4px 12px; background: var(--panel2); color: var(--muted); font-size: 13px; font-weight: 700; transform: skewX(-10deg); }
+.case-steps li.done { background: var(--yellow); color: #000; }
+.case-people { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 10px 0; }
+.case-person { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 18px; background: var(--panel2); border-top: 4px solid var(--c); min-width: 140px; }
+.case-person .role { font: 400 16px 'Black Han Sans'; }
+.case-person.victim .role { color: #bbb; }
+.case-person.culprit .role { color: var(--red); }
+.case-person small { color: var(--muted); font-size: 11px; }
+.vs { font: 400 28px 'Black Han Sans'; color: var(--pink); }
+.make-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr)); gap: 12px; margin-top: 10px; }
+.make-box { background: var(--panel2); padding: 12px 16px; border-left: 4px solid var(--pink); }
+.make-box h3 { margin-top: 4px; }
+.make-box ol { padding-left: 20px; display: flex; flex-direction: column; gap: 10px; }
+.make-box li textarea { margin: 6px 0; }
+.case-warn { background: #3a2208; border-left: 4px solid var(--orange); padding: 8px 14px; color: #ffd6a8; }
+.case-warn ul { margin: 4px 0 0; padding-left: 18px; }
+.case-sections { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(460px, 100%), 1fr)); gap: 4px 20px; }
+.case-card section { min-width: 0; }
+.pre { white-space: pre-wrap; margin: 4px 0; }
+.case-facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 8px 0; }
+.case-facts dt { color: var(--muted); font-weight: 700; }
+.case-facts dd { margin: 0; }
+.timeline { list-style: none; padding: 0; margin: 0; border-left: 2px solid var(--line); }
+.timeline li { padding: 3px 0 3px 12px; position: relative; }
+.timeline li::before { content: ''; position: absolute; left: -5px; top: 11px; width: 8px; height: 8px; border-radius: 50%; background: var(--yellow); }
+.timeline b { color: var(--yellow); margin-right: 6px; }
+.mk-file { background: #fff; color: #000; padding: 12px; white-space: pre-wrap; font-family: inherit; border-left: 10px solid #000; margin: 0; }
+.case-card details { background: var(--panel2); padding: 6px 10px; margin: 4px 0; }
+.case-card details summary { cursor: pointer; font-weight: 700; }
+.clue-list { display: flex; flex-direction: column; gap: 6px; }
+.clue-row { display: flex; gap: 10px; align-items: flex-start; background: var(--panel2); padding: 8px 10px; border-left: 4px solid var(--yellow); }
+.clue-row.k-sub { border-left-color: #b8a050; }
+.clue-row.k-red { border-left-color: #777; }
+.clue-row b { color: var(--yellow); }
+.clue-row .kind { font-size: 11px; background: #000; padding: 1px 6px; color: var(--yellow); }
+.clue-row.k-red .kind { color: #aaa; }
+.clue-row p { margin: 3px 0 0; font-size: 13px; }
+.clue-row .how { color: var(--muted); font-size: 12px; }
+.clue-row .given { color: var(--green); font-size: 12px; }
+.clue-give { background: #000 !important; min-width: 90px; }
+.clue-give[open] { min-width: 220px; }
+.trial-points { padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
+.trial-points .claim, .tp-card .claim { background: #000; padding: 6px 10px; margin: 4px 0; }
+.ans { color: var(--yellow); }
+.json-edit textarea { font-family: ui-monospace, monospace; font-size: 12px; margin: 6px 0; }
+.case-actions { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 6px; }
+.past-case { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.past-case small { color: var(--muted); }
+.tp-card { background: var(--panel2); padding: 8px 10px; border-left: 3px solid var(--yellow); display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+.tp-card .btn { align-self: flex-start; margin-top: 4px; }
+.tp-card .warn { color: var(--orange); }
+.gm-notes { padding-left: 18px; font-size: 13px; }
