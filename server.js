@@ -900,15 +900,22 @@ io.on('connection', (socket) => {
     const timeline = f.timeline.map((t) => `· ${t.time} — ${t.event}`).join('\n');
     const extra = { caseId: c.id, sealed: !!c.sealed };
     sendMail(room, c.culpritId, f.culpritMail.subject, `${f.culpritMail.body}\n\n──── 사건 경위 ────\n${timeline}`, { ...extra, kind: 'culprit' });
-    sendMail(room, c.victimId, f.victimMail.subject, f.victimMail.body, { ...extra, kind: 'victim' });
+    const vm = caseAI.victimMail(room.characters[c.victimId]?.name || '');
+    sendMail(room, c.victimId, vm.subject, vm.body, { ...extra, kind: 'victim' });
     c.sentAt = Date.now();
     c.status = 'sent';
   }
 
   // 사건 파일이 들어온 뒤: 봉인 모드면 바로 메일 발송
-  function caseFileReady(c, file, reply) {
+  // 사건 파일 저장: 공개되는 모노쿠마 파일에서 흑막 이름을 지우고 점검
+  function setCaseFile(c, file) {
     c.file = file;
     c.warnings = caseAI.checkCase(file);
+    if (caseAI.scrubName(file, room.characters[c.culpritId]?.name)) c.warnings.push('모노쿠마 파일에 흑막 이름이 있어서 지웠습니다.');
+  }
+
+  function caseFileReady(c, file, reply) {
+    setCaseFile(c, file);
     c.clueGiven = {};
     c.pointsUsed = 0;
     if (c.sealed) sendCaseMails(c);
@@ -1023,8 +1030,7 @@ io.on('connection', (socket) => {
       if (isSealed(c)) return reply({ error: '봉인된 사건은 수정할 수 없습니다.' });
       const res = caseAI.CaseSchema.safeParse(file);
       if (!res.success) return reply({ error: `형식 오류: ${res.error.issues.slice(0, 3).map((i) => `${i.path.join('.')}: ${i.message}`).join(' / ')}` });
-      c.file = res.data;
-      c.warnings = caseAI.checkCase(res.data);
+      setCaseFile(c, res.data);
       broadcast(room);
     },
     { gm: true }

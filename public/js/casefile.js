@@ -193,7 +193,7 @@ function fileView(c) {
       <section><h3>모노쿠마 파일 <small>(시체 발견 때 공개)</small></h3><pre class="mk-file">${esc(f.monokumaFile)}</pre></section>
       <section><h3>비밀 메일</h3>
         <details><summary>🔪 흑막에게: ${esc(f.culpritMail.subject)}</summary><p class="pre">${esc(f.culpritMail.body)}</p></details>
-        <details><summary>💀 피해자에게: ${esc(f.victimMail.subject)}</summary><p class="pre">${esc(f.victimMail.body)}</p></details>
+        <p class="hint">💀 피해자에게는 "당신은 이번 사건의 피해자입니다"라는 고정 문구만 갑니다. (흑막 단서가 새지 않도록)</p>
       </section>
     </div>
     <section><h3>단서 (언령) <small>조사 글에 대한 답으로 지급하세요. 같은 단서는 같은 언령으로 묶입니다.</small></h3>

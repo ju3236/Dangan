@@ -14,9 +14,8 @@ const CaseSchema = z.object({
   crimeScene: z.string().describe('실제 살해 장소 (주어진 장소 목록 중 하나)'),
   timeOfDeath: z.string().describe('사망 시각'),
   timeline: z.array(z.object({ time: z.string(), event: z.string() })).describe('사건 전후 시간순 경위. 흑막·피해자·다른 학생들의 동선 포함'),
-  monokumaFile: z.string().describe('모두에게 공개되는 모노쿠마 파일: 피해자, 사망 추정 시각, 발견 장소, 사인, 외상. 범인을 직접 드러내지 않는다'),
+  monokumaFile: z.string().describe('모두에게 공개되는 모노쿠마 파일: 피해자, 사망 추정 시각, 발견 장소, 사인, 외상. 흑막의 이름이나 흑막을 가리키는 정보는 절대 쓰지 않는다'),
   culpritMail: z.object({ subject: z.string(), body: z.string() }).describe('흑막 캐릭터에게 보내는 비밀 메일. 당신이 흑막이라는 사실, 사건 경위, 남긴 흔적, 재판에서 들키지 않기 위한 행동 지침'),
-  victimMail: z.object({ subject: z.string(), body: z.string() }).describe('피해자 캐릭터에게 보내는 비밀 메일. 당신이 피해자라는 사실과 사건 직전 마지막 장면에서 어디서 무엇을 하면 되는지 (역극용 지시)'),
   clues: z
     .array(
       z.object({
@@ -52,6 +51,7 @@ const SYSTEM = `당신은 「단간론파」 스타일 학급재판 역극의 �
 - 장소는 주어진 장소 목록 안에서 고르세요.
 - 학원의 교칙을 지키는 사건이어야 합니다.
 - 잔혹한 묘사는 원작 수준(만화적인 톤)으로 절제하세요.
+- 피해자에게 가는 메일은 사이트가 고정 문구로 보내므로 쓰지 않습니다. 피해자는 흑막이 누구인지 몰라야 합니다.
 - 메일은 모노쿠마의 말투(「우푸푸푸…」 등)로 쓰고, 플레이어가 바로 역극에 쓸 수 있을 만큼 구체적으로 쓰세요.`;
 
 let client = null;
@@ -104,6 +104,21 @@ function buildContext(room, { victimId, culpritId, difficulty, notes }) {
   if (notes) lines.push(`- GM 요청: ${notes}`);
   lines.push('\n위 정보를 바탕으로 사건 파일을 설계해 주세요.');
   return lines.join('\n');
+}
+
+// 피해자 메일은 AI가 쓰지 않고 고정 문구로 보낸다 (흑막에 대한 단서가 새지 않도록)
+function victimMail(name) {
+  return {
+    subject: '우푸푸… 당신은 이번 사건의 피해자입니다',
+    body: `${name} 에게.\n\n안타깝지만~ 당신은 이번 사건의 「피해자」로 뽑혔습니다!\n누가 당신을 노리는지는 비밀이에요. 시체 발견 방송이 나올 때까지 평소처럼 지내 주세요.\n\n이 메일은 다른 누구에게도 보여 주지 마세요. 우푸푸푸…!`,
+  };
+}
+
+// 공개되는 글에서 흑막 이름을 지운다. 지웠으면 true
+function scrubName(file, name) {
+  if (!name || !file.monokumaFile.includes(name)) return false;
+  file.monokumaFile = file.monokumaFile.split(name).join('(비공개)');
+  return true;
 }
 
 // API 없이 쓸 때: claude.ai 채팅에 붙여넣을 요청문
@@ -170,7 +185,7 @@ async function generateCase(room, opts) {
   return msg.parsed_output;
 }
 
-module.exports = { generateCase, buildPrompt, parseCaseText, checkCase, hasKey, CaseSchema };
+module.exports = { generateCase, buildPrompt, parseCaseText, checkCase, victimMail, scrubName, hasKey, CaseSchema };
 
 // API 오류를 GM에게 보여줄 한국어 문장으로
 function describeError(e) {
