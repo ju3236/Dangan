@@ -38,7 +38,19 @@ const CaseSchema = z.object({
     )
     .describe('재판 흐름 순서대로 4~8개. 마지막은 흑막을 지목하게 되는 논점'),
   gmNotes: z.array(z.string()).describe('GM 진행 팁: 막혔을 때 줄 힌트, 예상 질문과 대답, 주의할 점'),
+  climax: z
+    .array(z.string())
+    .describe('클라이맥스 추리용 사건 재구성 컷 5~8개 (시간순, 각 1~2문장). 흑막의 이름은 절대 쓰지 말고 "범인"이라고만 쓴다'),
+  execution: z
+    .object({
+      title: z.string().describe('예: "초고교급 탐정 ○○의 오시오키 — 〈마지막 수수께끼〉"'),
+      scenes: z.array(z.string()).describe('처형 연출 장면 4~6개. 흑막의 재능을 살린 만화적 블랙코미디 톤, 잔혹 묘사는 절제'),
+    })
+    .describe('흑막이 밝혀진 뒤 재생되는 오시오키(처형) 연출'),
 });
+
+// 예전에 만든 사건 파일(클라이맥스/오시오키 없음)도 불러올 수 있게
+const ImportSchema = CaseSchema.extend({ climax: CaseSchema.shape.climax.optional(), execution: CaseSchema.shape.execution.optional() });
 
 const SYSTEM = `당신은 「단간론파」 스타일 학급재판 역극의 사건 설계자입니다. 한국어로 씁니다.
 친구들이 캐릭터를 만들어 일상·조사·학급재판을 역극으로 진행하고, 사람 GM이 당신이 만든 사건 파일을 보고 진행합니다.
@@ -114,11 +126,43 @@ function victimMail(name) {
   };
 }
 
-// 공개되는 글에서 흑막 이름을 지운다. 지웠으면 true
+// 흑막이 밝혀지기 전에 공개되는 글(모노쿠마 파일, 클라이맥스 컷)에서 흑막 이름을 지운다. 지웠으면 true
 function scrubName(file, name) {
-  if (!name || !file.monokumaFile.includes(name)) return false;
-  file.monokumaFile = file.monokumaFile.split(name).join('(비공개)');
-  return true;
+  if (!name) return false;
+  let hit = false;
+  if (file.monokumaFile.includes(name)) {
+    file.monokumaFile = file.monokumaFile.split(name).join('(비공개)');
+    hit = true;
+  }
+  if (file.climax) {
+    file.climax = file.climax.map((t) => {
+      if (!t.includes(name)) return t;
+      hit = true;
+      return t.split(name).join('범인');
+    });
+  }
+  return hit;
+}
+
+// 클라이맥스 컷: 사건 파일에 없으면 타임라인으로 대신 (흑막 이름은 '범인'으로)
+function climaxPanels(file, culpritName) {
+  const list = file.climax?.length ? file.climax : file.timeline.map((t) => `${t.time} — ${t.event}`);
+  return list.map((t) => (culpritName ? t.split(culpritName).join('범인') : t)).map((t) => t.replace(/흑막/g, '범인'));
+}
+
+// 오시오키: 사건 파일에 없으면 기본 연출
+function executionScript(file, culprit) {
+  if (file?.execution?.scenes?.length) return file.execution;
+  const talent = culprit?.talent || '초고교급 ???';
+  return {
+    title: `${talent} ${culprit?.name || ''} 의 오시오키`,
+    scenes: [
+      `${culprit?.name || '흑막'} 의 목에 사슬이 걸리고, 어딘가로 끌려간다.`,
+      `무대 위에 「${talent}」을(를) 비튼 거대한 장치가 모습을 드러낸다.`,
+      '모노쿠마가 신나게 버튼을 누른다. 우푸푸푸푸!',
+      '…그리고 막이 내린다.',
+    ],
+  };
 }
 
 // API 없이 쓸 때: claude.ai 채팅에 붙여넣을 요청문
@@ -148,7 +192,7 @@ function parseCaseText(text) {
   } catch (e) {
     return { error: `JSON 형식이 올바르지 않습니다: ${e.message}` };
   }
-  const res = CaseSchema.safeParse(data);
+  const res = ImportSchema.safeParse(data);
   if (!res.success) {
     const issues = res.error.issues.slice(0, 6).map((i) => `${i.path.join('.') || '(전체)'}: ${i.message}`);
     return { error: `사건 파일 형식이 맞지 않습니다.\n${issues.join('\n')}` };
@@ -185,7 +229,7 @@ async function generateCase(room, opts) {
   return msg.parsed_output;
 }
 
-module.exports = { generateCase, buildPrompt, parseCaseText, checkCase, victimMail, scrubName, hasKey, CaseSchema };
+module.exports = { generateCase, buildPrompt, parseCaseText, checkCase, victimMail, scrubName, climaxPanels, executionScript, hasKey, CaseSchema, ImportSchema };
 
 // API 오류를 GM에게 보여줄 한국어 문장으로
 function describeError(e) {

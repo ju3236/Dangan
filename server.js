@@ -117,7 +117,7 @@ function createRoom(code, title) {
       gachaPrice: 1,
       items: DEFAULT_ITEMS.map(([name, desc, icon, price]) => ({ id: uid(), name, desc, icon, price, stock: null, gacha: true })),
     },
-    trial: { messages: [], voting: false, revealed: false, votes: {} },
+    trial: { messages: [], voting: false, revealed: false, votes: {}, climax: null, showdown: null },
     freeTime: { ...FREE_TIME_DEFAULTS },
     affinity: {},
     cases: [],
@@ -133,6 +133,8 @@ function migrate(room) {
   room.affinity = room.affinity || {};
   room.cases = room.cases || [];
   room.cases.forEach((c) => (c.generating = false));
+  room.trial.climax = room.trial.climax || null;
+  room.trial.showdown = room.trial.showdown || null;
   room.mails = room.mails || [];
   Object.values(room.characters || {}).forEach((c) => {
     if (typeof c.tickets !== 'number') c.tickets = room.freeTime.ticketsPerDay;
@@ -251,6 +253,16 @@ function publicState(room, pid) {
       voteCount: Object.keys(votes).length,
       myVotes,
       tally: room.trial.revealed || gm ? tally : null,
+      // 클라이맥스 추리: 정답 순서(order)는 보내지 않는다
+      climax: room.trial.climax && {
+        panels: room.trial.climax.panels, slots: room.trial.climax.slots, solved: room.trial.climax.solved,
+        attempts: room.trial.climax.attempts, lastHits: room.trial.climax.lastHits,
+      },
+      // 반론 쇼다운: 아직 안 나온 대사는 보내지 않는다
+      showdown: room.trial.showdown && {
+        id: room.trial.showdown.id, attackerId: room.trial.showdown.attackerId, targetId: room.trial.showdown.targetId,
+        index: room.trial.showdown.index, total: room.trial.showdown.lines.length,
+      },
     },
   };
 }
@@ -1028,7 +1040,7 @@ io.on('connection', (socket) => {
       const c = findCase(id);
       if (!c) return reply({ error: '사건을 찾을 수 없습니다.' });
       if (isSealed(c)) return reply({ error: '봉인된 사건은 수정할 수 없습니다.' });
-      const res = caseAI.CaseSchema.safeParse(file);
+      const res = caseAI.ImportSchema.safeParse(file);
       if (!res.success) return reply({ error: `형식 오류: ${res.error.issues.slice(0, 3).map((i) => `${i.path.join('.')}: ${i.message}`).join(' / ')}` });
       setCaseFile(c, res.data);
       broadcast(room);
@@ -1250,6 +1262,16 @@ io.on('connection', (socket) => {
     const ev = room.evidence[evidenceId];
     if (!target || !c || !ev) return reply({ error: '쏠 수 없습니다.' });
     if (!c.bullets.includes(evidenceId)) return reply({ error: `${c.name} 은(는) 그 언령을 가지고 있지 않습니다.` });
+    if (target.type === 'showdown') {
+      const sd = room.trial.showdown;
+      if (!sd || sd.id !== target.showdownId) return reply({ error: '끝난 반론 쇼다운입니다.' });
+      trialPush(room, {
+        type: 'shoot', kind: 'cut', result: 'pending', targetId: target.id, showdownId: sd.id, evidenceId,
+        charId: c.id, author: me().nickname, authorId: pid, text: `「${ev.name}」 ▶ “${target.text.replace(/[{}]/g, '')}”`,
+      });
+      splash(room, { kind: 'cut', name: c.name, color: c.color });
+      return reply({ ok: true });
+    }
     const agree = kind === 'agree';
     const result = target.answerId
       ? target.answerId === evidenceId ? 'break' : 'miss'
@@ -1292,11 +1314,171 @@ io.on('connection', (socket) => {
     'trial:clear',
     () => {
       room.trial.messages = [];
+      room.trial.climax = null;
+      room.trial.showdown = null;
       io.to(room.code).emit('trial:log', []);
+      broadcast(room);
       scheduleSave();
     },
     { gm: true }
   );
+
+  // ---------- 클라이맥스 추리 ----------
+  // 사건 재구성 컷을 섞어서 내고, 모두가 함께 순서를 맞춘다. 정답 순서는 서버만 안다
+  const finaleCase = () => [...room.cases].reverse().find((x) => x.file && x.status !== 'closed');
+
+  on(
+    'climax:start',
+    (_, reply) => {
+      const c = finaleCase();
+      if (!c) return reply({ error: '진행 중인 사건 파일이 없습니다.' });
+      const texts = caseAI.climaxPanels(c.file, room.characters[c.culpritId]?.name);
+      if (texts.length < 2) return reply({ error: '클라이맥스 컷이 부족합니다.' });
+      const ordered = texts.map((text) => ({ id: uid(), text }));
+      const panels = [...ordered];
+      for (let i = panels.length - 1; i > 0; i--) {
+        const j = crypto.randomInt(i + 1);
+        [panels[i], panels[j]] = [panels[j], panels[i]];
+      }
+      room.trial.climax = { caseId: c.id, order: ordered.map((p) => p.id), panels, slots: [], solved: false, attempts: 0, lastHits: null };
+      trialPush(room, { type: 'announce', text: '자, 그럼 사건을 처음부터 되짚어 볼까요~? 클라이맥스 추리를 시작합니다!' });
+      splash(room, { kind: 'climax' });
+      broadcast(room);
+    },
+    { gm: true }
+  );
+
+  on('climax:place', ({ panelId }) => {
+    const cx = room.trial.climax;
+    if (!cx || cx.solved || !cx.panels.some((p) => p.id === panelId) || cx.slots.includes(panelId)) return;
+    cx.slots.push(panelId);
+    broadcast(room);
+  });
+
+  on('climax:remove', ({ index }) => {
+    const cx = room.trial.climax;
+    if (!cx || cx.solved) return;
+    cx.slots.splice(int(index, 0, 0, 99), 1);
+    broadcast(room);
+  });
+
+  on('climax:clear', () => {
+    const cx = room.trial.climax;
+    if (!cx || cx.solved) return;
+    cx.slots = [];
+    broadcast(room);
+  });
+
+  on('climax:submit', (_, reply) => {
+    const cx = room.trial.climax;
+    if (!cx || cx.solved) return;
+    if (cx.slots.length !== cx.order.length) return reply({ error: '모든 컷을 채워 주세요.' });
+    cx.attempts += 1;
+    const hits = cx.slots.filter((id, i) => cx.order[i] === id).length;
+    cx.lastHits = hits;
+    if (hits === cx.order.length) {
+      cx.solved = true;
+      const texts = cx.order.map((id) => cx.panels.find((p) => p.id === id).text);
+      trialPush(room, { type: 'narration', text: `【클라이맥스 추리】\n${texts.map((t, i) => `${i + 1}. ${t}`).join('\n')}\n\n…이게 사건의 전말이다!` });
+      io.to(room.code).emit('climax:play', { panels: texts });
+    } else {
+      trialPush(room, { type: 'dice', text: `클라이맥스 추리 실패… ${cx.order.length}컷 중 ${hits}컷이 제자리입니다. (${cx.attempts}번째 시도)` });
+      splash(room, { kind: 'miss' });
+    }
+    broadcast(room);
+  });
+
+  on(
+    'climax:close',
+    () => {
+      room.trial.climax = null;
+      broadcast(room);
+    },
+    { gm: true }
+  );
+
+  // ---------- 오시오키 ----------
+  on(
+    'execution:start',
+    (_, reply) => {
+      const c = [...room.cases].reverse().find((x) => x.file && x.revealed && x.status !== 'closed');
+      if (!c) return reply({ error: '흑막이 공개된 사건이 없습니다. 투표 결과를 먼저 공개해 주세요.' });
+      const k = room.characters[c.culpritId];
+      if (!k) return reply({ error: '흑막 캐릭터를 찾을 수 없습니다.' });
+      const script = caseAI.executionScript(c.file, k);
+      room.phase = 'execution';
+      k.alive = false;
+      trialPush(room, { type: 'phase', text: '처형', phase: 'execution' });
+      trialPush(room, { type: 'narration', text: `【${script.title}】\n${script.scenes.join('\n')}` });
+      io.to(room.code).emit('execution:play', { charId: k.id, title: script.title, scenes: script.scenes });
+      notice(room, `── ${room.day}일째 · 처형 ── ${k.name}의 오시오키`, [], { kind: 'phase' });
+      broadcast(room);
+    },
+    { gm: true }
+  );
+
+  // ---------- 반론 쇼다운 ----------
+  // 누군가의 주장에 1:1로 반론. 상대가 약점을 베면, 반론한 쪽(또는 GM)이 수긍/계속을 고른다
+  const showdownOwner = (sd) => sd && (room.characters[sd.attackerId]?.ownerId === pid || isGM());
+  function showdownLine(sd) {
+    trialPush(room, {
+      type: 'showdown', showdownId: sd.id, charId: sd.attackerId, targetId: sd.targetId,
+      line: sd.index + 1, total: sd.lines.length, text: sd.lines[sd.index], author: me().nickname, authorId: pid,
+    });
+  }
+
+  on('showdown:start', ({ charId, targetId, lines }, reply) => {
+    const a = ownChar(charId);
+    const t = room.characters[targetId];
+    if (!a || !t || a === t) return reply({ error: '반론할 캐릭터와 상대를 고르세요.' });
+    if (room.trial.showdown) return reply({ error: '이미 반론 쇼다운이 진행 중입니다.' });
+    lines = arr(lines, 6).map((l) => str(l, 300).trim()).filter(Boolean);
+    if (!lines.length) return reply({ error: '반론 대사를 적어 주세요.' });
+    if (!lines.some((l) => /\{[^{}]+\}/.test(l))) return reply({ error: '대사 중 하나에는 {약점}이 있어야 합니다.' });
+    const sd = (room.trial.showdown = { id: uid(), attackerId: a.id, targetId: t.id, lines, index: 0 });
+    splash(room, { kind: 'showdown', name: `${a.name} ⚔ ${t.name}`, color: a.color });
+    showdownLine(sd);
+    broadcast(room);
+  });
+
+  on('showdown:next', (_, reply) => {
+    const sd = room.trial.showdown;
+    if (!showdownOwner(sd)) return reply({ error: '반론한 사람만 진행할 수 있습니다.' });
+    if (sd.index + 1 >= sd.lines.length) return reply({ error: '남은 대사가 없습니다.' });
+    sd.index += 1;
+    showdownLine(sd);
+    broadcast(room);
+  });
+
+  on('showdown:resolve', ({ ok }, reply) => {
+    const sd = room.trial.showdown;
+    if (!showdownOwner(sd)) return reply({ error: '반론한 사람만 판정할 수 있습니다.' });
+    const cut = [...room.trial.messages].reverse().find((m) => m.type === 'shoot' && m.showdownId === sd.id && m.result === 'pending');
+    if (cut) {
+      cut.result = ok ? 'break' : 'miss';
+      trialUpdate(room, cut);
+    }
+    if (ok) {
+      const target = room.trial.messages.find((m) => m.id === cut?.targetId);
+      if (target) {
+        target.broken = true;
+        trialUpdate(room, target);
+      }
+      const a = room.characters[sd.attackerId];
+      room.trial.showdown = null;
+      trialPush(room, { type: 'dice', text: `⚔ 반론 쇼다운 종료 — ${a?.name || ''}의 반론이 베어졌다!` });
+      splash(room, { kind: 'break' });
+    } else splash(room, { kind: 'still', name: room.characters[sd.attackerId]?.name });
+    broadcast(room);
+  });
+
+  on('showdown:end', (_, reply) => {
+    const sd = room.trial.showdown;
+    if (!showdownOwner(sd)) return reply({ error: '반론한 사람만 끝낼 수 있습니다.' });
+    room.trial.showdown = null;
+    trialPush(room, { type: 'dice', text: '⚔ 반론 쇼다운이 끝났다.' });
+    broadcast(room);
+  });
 
   // 투표는 캐릭터 단위 (한 계정이 여러 캐릭터를 굴리므로)
   on(

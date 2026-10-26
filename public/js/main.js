@@ -6,6 +6,7 @@ import * as handbook from './handbook.js';
 import { unreadCount } from './handbook.js';
 import * as shop from './shop.js';
 import * as gm from './gm.js';
+import { playClimax, playExecution } from './cinema.js';
 
 const views = { board, trial, handbook, shop, gm };
 
@@ -147,6 +148,8 @@ socket.on('notice', (n) => {
   if (n.kind !== 'phase') toast(n.text, n.kind || 'info');
 });
 socket.on('splash', showSplash);
+socket.on('climax:play', playClimax);
+socket.on('execution:play', playExecution);
 
 function renderTop() {
   const s = store.state;
@@ -181,6 +184,10 @@ function showSplash({ kind, name, color, skill, text, level, max }) {
     vote: '<small>VOTE</small>투표 타임!',
     result: '<small>VOTE RESULT</small>투표 결과',
     correct: '<small>CLASS TRIAL</small>정답!!',
+    climax: '<small>CLIMAX INFERENCE</small>클라이맥스 추리',
+    showdown: `<small>${esc(name)}</small>반론하겠어!`,
+    cut: `${n}그 말, 베어 주겠어!`,
+    still: `${n}아직이야!`,
     wrong: '<small>CLASS TRIAL</small>오답…',
     skill: `${n}〈${esc(skill)}〉<small>SKILL</small>`,
     announce: `<small>📺 모노쿠마 방송</small><span class="announce-text">${esc(text)}</span>`,

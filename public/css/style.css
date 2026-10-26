@@ -654,3 +654,70 @@ textarea.masked::selection { color: transparent; background: rgba(166, 107, 255,
 .splash.correct .word { color: var(--yellow); --sc: var(--red); }
 .splash.wrong { background: rgba(60, 0, 20, .85); }
 .splash.wrong .word { color: #bbb; --sc: #000; }
+
+/* ---------- 클라이맥스 추리 판 ---------- */
+.climax-board {
+  position: absolute; inset: 10px 10px 130px; z-index: 5; overflow-y: auto;
+  background: rgba(8, 4, 14, .94); border: 2px solid var(--yellow); padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.cx-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.cx-head b { font: 400 20px 'Black Han Sans'; color: var(--yellow); }
+.cx-hits { color: var(--orange); font-weight: 700; font-size: 13px; }
+.cx-head .btn { margin-left: auto; }
+.cx-slots { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 6px; }
+.cx-slots li { min-height: 74px; border: 2px dashed #5a4a20; padding: 6px 8px 6px 30px; position: relative; font-size: 13px; color: var(--muted); }
+.cx-slots li i { position: absolute; left: 6px; top: 4px; font: 400 18px 'Black Han Sans'; color: var(--yellow); font-style: normal; }
+.cx-slots li.filled { border-style: solid; border-color: var(--yellow); background: #fff; color: #111; cursor: pointer; transform: skewX(-3deg); }
+.cx-slots li.filled i { color: var(--pink); }
+.cx-pool { display: flex; flex-wrap: wrap; gap: 6px; }
+.cx-card { background: var(--panel2); border: 1px solid var(--line); color: var(--text); padding: 7px 10px; font: inherit; font-size: 13px; cursor: pointer; max-width: 260px; text-align: left; }
+.cx-card:hover { border-color: var(--yellow); }
+
+/* ---------- 반론 쇼다운 ---------- */
+.sd-bar { background: linear-gradient(90deg, #3a0a12, #1a0a10); border-top: 2px solid var(--red); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; flex: none; }
+.sd-bar b { color: var(--red); }
+.lg.showdown { display: flex; gap: 8px; background: #2a0a10; border-left-color: var(--red); }
+.lg.showdown b { color: var(--red); }
+.lg.shoot.cut { background: #2a0a10; border-left-color: var(--red); }
+.textbox.showdown { border-color: var(--red); background: linear-gradient(100deg, rgba(60, 4, 14, .95), rgba(10, 6, 14, .9)); }
+.textbox.showdown .nameplate { background: var(--red); color: #fff; }
+.textbox.shoot.cut { border-color: var(--red); }
+.splash.showdown, .splash.cut { background: linear-gradient(115deg, rgba(160, 0, 20, .7) 48%, rgba(0, 0, 0, .8) 52%); }
+.splash.showdown .word, .splash.cut .word { --sc: var(--red); }
+.splash.still .word { color: #fff; --sc: var(--red); }
+.splash.climax { background: radial-gradient(circle, rgba(255, 207, 58, .45), rgba(0, 0, 0, .85)); }
+.splash.climax .word { --sc: var(--orange); }
+.finale-btns { margin-top: 8px; }
+
+/* ---------- 전체 화면 연출 ---------- */
+.cinema { position: fixed; inset: 0; z-index: 300; display: grid; place-items: center; cursor: pointer; overflow: hidden; }
+.cinema.climax { background: repeating-conic-gradient(from 0deg, #1a1206 0 10deg, #0a0804 10deg 20deg); }
+.cinema.execution { background: repeating-linear-gradient(45deg, #120004 0 30px, #000 30px 60px); }
+.cinema-hint { position: absolute; bottom: 12px; right: 16px; color: #777; font-size: 12px; }
+.cinema-frame { width: min(900px, 92vw); text-align: center; opacity: 0; transform: scale(.92); transition: opacity .45s, transform .45s; }
+.cinema-frame.in { opacity: 1; transform: none; }
+.cinema-frame.title b { display: block; font: 400 clamp(40px, 9vw, 96px) 'Black Han Sans'; color: #fff; text-shadow: 5px 5px 0 var(--orange); transform: skewX(-10deg); }
+.cinema-frame.title small { display: block; color: var(--yellow); letter-spacing: .3em; font-weight: 900; }
+.cinema-frame.title span { color: #ddd; font-size: 18px; }
+.cinema-frame.title.end b { text-shadow: 5px 5px 0 var(--red); }
+.comic { background: #fff; color: #111; border: 6px solid #000; box-shadow: 12px 12px 0 var(--yellow); padding: 28px 34px; text-align: left; position: relative; }
+.panel.left .comic { transform: rotate(-2deg) skewX(-3deg); }
+.panel.right .comic { transform: rotate(2deg) skewX(3deg); }
+.comic i { position: absolute; top: -18px; left: 18px; background: var(--pink); color: #fff; font: 400 20px 'Black Han Sans'; padding: 2px 14px; font-style: normal; transform: skewX(-12deg); }
+.comic p { margin: 0; font-size: clamp(17px, 2.6vw, 24px); line-height: 1.7; font-weight: 700; }
+.cinema-frame.gameover b { display: block; font: 400 clamp(56px, 13vw, 150px) 'Black Han Sans'; color: var(--red); text-shadow: 6px 6px 0 #000, 0 0 30px rgba(224, 38, 59, .7); animation: flicker 1.2s infinite; }
+.cinema-frame.gameover span { color: #fff; font-size: clamp(16px, 2.4vw, 22px); font-weight: 700; }
+@keyframes flicker { 0%, 100% { opacity: 1; } 45% { opacity: .85; } 50% { opacity: .3; } 55% { opacity: 1; } }
+.exec-sprite { max-height: 52vh; max-width: 60%; filter: drop-shadow(0 0 20px rgba(224, 38, 59, .6)); }
+.exec-initial { width: 200px; height: 200px; margin: 0 auto; display: grid; place-items: center; font: 400 110px 'Black Han Sans'; color: var(--c); border: 5px solid var(--c); background: #000; }
+.exec-name { margin-top: 14px; font: 400 clamp(24px, 4vw, 40px) 'Black Han Sans'; color: #fff; text-shadow: 3px 3px 0 var(--red); }
+.exec-name small { display: block; font-size: .5em; color: var(--red); letter-spacing: .3em; text-shadow: none; }
+.exec-scene p { margin: 18px auto 0; max-width: 760px; background: rgba(0, 0, 0, .85); border: 2px solid var(--red); padding: 16px 22px; color: #fff; font-size: clamp(16px, 2.4vw, 22px); line-height: 1.7; }
+.exec-scene.s0 .exec-sprite, .exec-scene.s0 .exec-initial { animation: shake .25s infinite; }
+.exec-scene.s1 .exec-sprite, .exec-scene.s1 .exec-initial { filter: grayscale(1) contrast(1.6) drop-shadow(0 0 20px #f00); }
+.exec-scene.s2 .exec-sprite, .exec-scene.s2 .exec-initial { animation: spinout 3s ease-in forwards; }
+@keyframes spinout { to { transform: rotate(540deg) scale(.2); opacity: .2; } }
+.cinema-frame.exec-end b { display: block; font: 400 clamp(56px, 12vw, 130px) 'Black Han Sans'; color: #fff; text-shadow: 6px 6px 0 var(--red); }
+.cinema-frame.exec-end span { color: #ddd; font-size: 20px; }
+@media (max-width: 760px) { .climax-board { inset: 6px 6px 110px; } .cx-slots { grid-template-columns: minmax(0, 1fr); } }
