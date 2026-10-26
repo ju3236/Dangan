@@ -109,12 +109,14 @@ function buildContext(room, { victimId, culpritId, difficulty, notes }) {
 // API 없이 쓸 때: claude.ai 채팅에 붙여넣을 요청문
 function buildPrompt(room, opts) {
   const schema = JSON.stringify(z.toJSONSchema(CaseSchema), null, 1);
-  return `${SYSTEM}
+  return `⚠️ GM에게: 이 요청문과 답변에는 사건의 진상이 담겨 있습니다. 읽지 말고 그대로 보낸 뒤, 답변이 끝나면 코드 블록의 복사 버튼만 누르세요.
+
+${SYSTEM}
 
 ${buildContext(room, opts)}
 
 ## 출력 형식
-아래 JSON 스키마를 따르는 JSON 객체 하나만 \`\`\`json 코드 블록으로 출력하세요. 설명이나 다른 글은 쓰지 마세요.
+아래 JSON 스키마를 따르는 JSON 객체 하나만 \`\`\`json 코드 블록으로 출력하세요. 이 요청을 보낸 사람도 사건 내용을 보면 안 되므로, 코드 블록 앞뒤에 요약·설명·인사를 절대 쓰지 마세요.
 ${schema}`;
 }
 

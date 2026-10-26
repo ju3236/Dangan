@@ -9,7 +9,7 @@ let typing = null;
 let sideTab = 'log';
 let follow = true; // 새 메시지를 따라갈지
 
-const STAGE_TYPES = ['say', 'narration', 'announce', 'shoot', 'skill'];
+const STAGE_TYPES = ['say', 'point', 'narration', 'announce', 'shoot', 'skill'];
 
 export function mount(el) {
   shownId = null;
@@ -143,6 +143,7 @@ function show(id, animate) {
   if (m.type === 'narration') name = '';
   if (m.type === 'shoot') name = `${c?.name || ''} — ${m.kind === 'agree' ? '동의한다!' : '그건 틀렸어!'}`;
   if (m.type === 'skill') name = `${c?.name || ''} — 스킬 발동`;
+  if (m.type === 'point') name = `논스톱 의논 — 논점 ${m.index}`;
   plate.textContent = name;
   plate.classList.toggle('hidden', !name);
   plate.style.setProperty('--c', m.type === 'announce' ? '#ffffff' : c?.color || '#ff3e8a');
@@ -215,7 +216,7 @@ function textHTML(m) {
     const res = { break: '<b class="res break">BREAK!!</b>', miss: '<b class="res miss">튕겨났다…</b>', pending: '<b class="res pending">판정 대기</b>' }[m.result] || '';
     return `${clueHTML(m.text)} ${res}`;
   }
-  if (m.type === 'say') return weakHTML(m.text, m.id, !m.broken, true);
+  if (m.type === 'say' || m.type === 'point') return weakHTML(m.text, m.id, !m.broken, true);
   if (m.type === 'narration' || m.type === 'announce') return clueHTML(m.text);
   return esc(m.text);
 }
@@ -342,6 +343,10 @@ function logHTML() {
             return `<div class="lg say ${m.id === shownId ? 'current' : ''} ${m.broken ? 'broken' : ''}" data-show="${m.id}" style="--c:${c?.color || '#999'}">
               ${avatar(c, 30, m.spriteId)}<div><b>${esc(c?.name || '?')}</b> <small>${t}</small>${gm && m.answerId ? ` <small class="ans">정답: ${esc(evidenceById(m.answerId)?.name || '?')}</small>` : ''}
               <div>${weakHTML(m.text, m.id, !m.broken, true)}</div></div></div>`;
+          case 'point':
+            return `<div class="lg point ${m.id === shownId ? 'current' : ''} ${m.broken ? 'broken' : ''}" data-show="${m.id}">
+              <b>🗯 논점 ${m.index} · ${esc(m.topic)}</b> <small>${t}</small>${gm && m.answerName ? ` <small class="ans">정답: ${esc(m.answerName)}</small>` : ''}
+              <div><div>${weakHTML(m.text, m.id, !m.broken, true)}</div></div></div>`;
           case 'ooc':
             return `<div class="lg ooc" data-show-none><b>${esc(m.author)}</b> <small>OOC ${t}</small> ${clueHTML(m.text)}</div>`;
           case 'narration':
@@ -369,12 +374,21 @@ function logHTML() {
 }
 
 function caseHTML() {
-  const c = [...(store.state.cases || [])].reverse().find((x) => x.file && x.status !== 'closed');
+  const c = [...(store.state.cases || [])].reverse().find((x) => (x.file || x.hasFile) && x.status !== 'closed');
   if (!c) return '<p class="hint">진행 중인 사건 파일이 없습니다. GM → 사건 기획에서 만들 수 있어요.</p>';
+  const used = c.pointsUsed || 0;
+  const total = c.pointsTotal ?? c.file?.trialPoints.length ?? 0;
+  const next = `<button class="btn small pink" data-nextpoint="${c.id}" ${used >= total ? 'disabled' : ''}>🗯 다음 논점 내기 (${used}/${total})</button>`;
+  if (c.sealed && !c.revealed)
+    return `<h4>🔒 봉인된 사건</h4>
+      <p class="hint">GM도 정답을 모르는 상태예요. 「다음 논점 내기」를 누르면 사건 파일의 틀린 주장이 논스톱 의논으로 나오고, 맞는 언령을 쏘면 자동으로 BREAK 판정됩니다.</p>
+      ${next}
+      <p class="hint">모든 논점이 끝나면 투표 탭에서 투표를 시작하세요. 결과 공개 때 모노쿠마가 정답 여부와 흑막을 발표합니다.</p>`;
   const f = c.file;
   return `<h4>🔪 ${esc(f.title)}</h4>
     <p class="hint">흑막: ${esc(charById(c.culpritId)?.name || '?')} · 피해자: ${esc(charById(c.victimId)?.name || '?')}</p>
-    <p class="hint">발언할 때 「정답 언령」을 고르면 자동 판정됩니다. 아래 논점 순서대로 진행해 보세요.</p>
+    <p class="hint">발언할 때 「정답 언령」을 고르면 자동 판정됩니다. 아래 논점을 직접 발언하거나, 버튼으로 차례대로 낼 수 있어요.</p>
+    ${next}
     ${f.trialPoints
       .map((t, i) => `<div class="tp-card"><b>${i + 1}. ${esc(t.topic)}</b><div class="claim">“${weakHTML(t.falseClaim, '', false)}”</div>
         <div>정답 ⚡ <b>${esc(t.answerClue)}</b>${store.state.evidence.some((e) => e.name === t.answerClue) ? '' : ' <small class="warn">(아직 지급 안 됨)</small>'}</div>
@@ -459,9 +473,10 @@ function bindSide(body) {
       })
   );
   $$('[data-show-none] [data-ev]', body).forEach((x) => (x.onclick = () => showClue(x.dataset.ev)));
+  $$('[data-nextpoint]', body).forEach((b) => (b.onclick = () => emit('case:point', { id: b.dataset.nextpoint })));
   $$('[data-usepoint]', body).forEach((b) => {
     b.onclick = () => {
-      const c = [...(store.state.cases || [])].reverse().find((x) => x.file && x.status !== 'closed');
+      const c = [...(store.state.cases || [])].reverse().find((x) => x.file?.trialPoints && x.status !== 'closed');
       const t = c.file.trialPoints[+b.dataset.usepoint];
       $('#tText').value = t.falseClaim;
       const ev = store.state.evidence.find((e) => e.name === t.answerClue);

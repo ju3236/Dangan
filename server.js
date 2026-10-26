@@ -163,6 +163,34 @@ function canSeeChars(room, pid, charIds) {
   return charIds.some((id) => room.characters[id]?.ownerId === pid);
 }
 
+// 봉인된 사건: GM도 피해자/흑막/진상을 모른다 (진상 공개 전까지)
+const isSealed = (c) => !!c && c.sealed && !c.revealed;
+const caseById = (room, id) => room.cases.find((c) => c.id === id);
+
+function canSeeNotice(room, pid, n) {
+  if (n.private) return n.charIds.some((id) => room.characters[id]?.ownerId === pid);
+  return canSeeChars(room, pid, n.charIds);
+}
+
+function canSeeMail(room, pid, m) {
+  if (room.characters[m.charId]?.ownerId === pid) return true;
+  return pid === room.gmId && !isSealed(caseById(room, m.caseId));
+}
+
+// GM에게 보낼 사건 정보. 봉인 중이면 진상을 빼고, 시체 발견 뒤에는 단서 목록과 모노쿠마 파일만
+function caseForGM(c) {
+  if (!isSealed(c)) return c;
+  const f = c.file;
+  return {
+    id: c.id, status: c.status, createdAt: c.createdAt, day: c.day, sealed: true, revealed: false,
+    difficulty: c.difficulty, notes: c.notes, excludeGM: c.excludeGM, generating: c.generating,
+    sentAt: c.sentAt, bodyAt: c.bodyAt, hasFile: !!f, warningCount: c.warnings?.length || 0, clueGiven: c.clueGiven,
+    pointsUsed: c.pointsUsed || 0, pointsTotal: f?.trialPoints.length || 0,
+    victimId: c.bodyAt ? c.victimId : null, culpritId: null,
+    file: f && c.bodyAt ? { clues: f.clues.map(({ name, desc, location, howFound }) => ({ name, desc, location, howFound })), monokumaFile: f.monokumaFile } : null,
+  };
+}
+
 function publicState(room, pid) {
   const gm = pid === room.gmId;
   const online = onlineSet(room);
@@ -200,11 +228,11 @@ function publicState(room, pid) {
     characters,
     evidence,
     posts: room.posts,
-    notices: room.notices.filter((n) => canSeeChars(room, pid, n.charIds)).slice(-100),
+    notices: room.notices.filter((n) => canSeeNotice(room, pid, n)).slice(-100),
     shop: room.shop,
     freeTime: room.freeTime,
-    mails: room.mails.filter((m) => canSeeChars(room, pid, [m.charId])),
-    cases: gm ? room.cases : undefined,
+    mails: room.mails.filter((m) => canSeeMail(room, pid, m)),
+    cases: gm ? room.cases.map(caseForGM) : undefined,
     caseAI: gm ? caseAI.hasKey() : undefined,
     affinity: Object.fromEntries(
       Object.entries(room.affinity)
@@ -221,10 +249,16 @@ function publicState(room, pid) {
   };
 }
 
-function trialMsgView(m, gm) {
-  if (gm || !m.answerId) return m;
-  const { answerId, ...rest } = m;
+// 재판 메시지의 정답은 GM에게만, 봉인된 사건의 논점이면 GM에게도 숨긴다
+function trialMsgView(room, m, gm) {
+  if (!m.answerId && !m.answerName) return m;
+  if (gm && !isSealed(caseById(room, m.caseId))) return m;
+  const { answerId, answerName, ...rest } = m;
   return { ...rest, hasAnswer: true };
+}
+
+function sendTrialLog(room) {
+  eachSocket(room, (s, id) => s.emit('trial:log', room.trial.messages.map((m) => trialMsgView(room, m, id === room.gmId))));
 }
 
 function eachSocket(room, fn) {
@@ -243,20 +277,20 @@ function notice(room, text, charIds = [], extra = {}) {
   const n = { id: uid(), ts: Date.now(), day: room.day, text, charIds, ...extra };
   room.notices.push(n);
   if (room.notices.length > MAX_NOTICES) room.notices.splice(0, room.notices.length - MAX_NOTICES);
-  eachSocket(room, (s, pid) => canSeeChars(room, pid, charIds) && s.emit('notice', n));
+  eachSocket(room, (s, pid) => canSeeNotice(room, pid, n) && s.emit('notice', n));
 }
 
 function trialPush(room, msg) {
   const m = { id: uid(), ts: Date.now(), ...msg };
   room.trial.messages.push(m);
   if (room.trial.messages.length > MAX_TRIAL_MESSAGES) room.trial.messages.splice(0, room.trial.messages.length - MAX_TRIAL_MESSAGES);
-  eachSocket(room, (s, pid) => s.emit('trial:msg', trialMsgView(m, pid === room.gmId)));
+  eachSocket(room, (s, pid) => s.emit('trial:msg', trialMsgView(room, m, pid === room.gmId)));
   scheduleSave();
   return m;
 }
 
 function trialUpdate(room, m) {
-  eachSocket(room, (s, pid) => s.emit('trial:update', trialMsgView(m, pid === room.gmId)));
+  eachSocket(room, (s, pid) => s.emit('trial:update', trialMsgView(room, m, pid === room.gmId)));
   scheduleSave();
 }
 
@@ -279,7 +313,7 @@ function bodyDiscovered(room, pid, text) {
 function sendMail(room, charId, subject, body, extra = {}) {
   const m = { id: uid(), charId, from: extra.from || '모노쿠마', subject, body, ts: Date.now(), read: false, ...extra };
   room.mails.push(m);
-  notice(room, `📩 ${room.characters[charId]?.name || ''} 의 학생수첩에 새 메일이 도착했습니다.`, [charId], { kind: 'mail' });
+  notice(room, `📩 ${room.characters[charId]?.name || ''} 의 학생수첩에 새 메일이 도착했습니다.`, [charId], { kind: 'mail', private: !!extra.sealed });
   return m;
 }
 
@@ -398,7 +432,7 @@ io.on('connection', (socket) => {
     socket.join(r.code);
     const session = crypto.randomBytes(18).toString('hex');
     r.sessions[session] = pid;
-    socket.emit('trial:log', r.trial.messages.map((m) => trialMsgView(m, isGM())));
+    socket.emit('trial:log', r.trial.messages.map((m) => trialMsgView(r, m, isGM())));
     broadcast(r);
     reply({ code: r.code, session });
   }
@@ -848,19 +882,42 @@ io.on('connection', (socket) => {
     Object.values(room.characters).filter((c) => c.alive && !c.npc && !(excludeGM && c.ownerId === room.gmId));
   const pick = (list) => list[crypto.randomInt(list.length)];
 
+  // 흑막·피해자에게 비밀 메일
+  function sendCaseMails(c) {
+    const f = c.file;
+    const timeline = f.timeline.map((t) => `· ${t.time} — ${t.event}`).join('\n');
+    const extra = { caseId: c.id, sealed: !!c.sealed };
+    sendMail(room, c.culpritId, f.culpritMail.subject, `${f.culpritMail.body}\n\n──── 사건 경위 ────\n${timeline}`, { ...extra, kind: 'culprit' });
+    sendMail(room, c.victimId, f.victimMail.subject, f.victimMail.body, { ...extra, kind: 'victim' });
+    c.sentAt = Date.now();
+    c.status = 'sent';
+  }
+
+  // 사건 파일이 들어온 뒤: 봉인 모드면 바로 메일 발송
+  function caseFileReady(c, file, reply) {
+    c.file = file;
+    c.warnings = caseAI.checkCase(file);
+    c.clueGiven = {};
+    c.pointsUsed = 0;
+    if (c.sealed) sendCaseMails(c);
+    broadcast(room);
+    reply({ ok: true, warnings: c.sealed ? undefined : c.warnings, warningCount: c.warnings.length, sent: !!c.sentAt });
+  }
+
   on(
     'case:draw',
     (d, reply) => {
+      const sealed = d.sealed !== false;
       const pool = drawPool(!!d.excludeGM);
-      const victim = room.characters[d.victimId] || (pool.length ? pick(pool) : null);
+      const victim = (!sealed && room.characters[d.victimId]) || (pool.length ? pick(pool) : null);
       const rest = pool.filter((c) => c !== victim);
-      const culprit = room.characters[d.culpritId] || (rest.length ? pick(rest) : null);
+      const culprit = (!sealed && room.characters[d.culpritId]) || (rest.length ? pick(rest) : null);
       if (!victim || !culprit || victim === culprit) return reply({ error: '추첨할 수 있는 학생이 2명 이상 필요합니다.' });
       room.cases.forEach((c) => c.status === 'draft' && !c.file && (c.status = 'closed'));
       const c = {
         id: uid(), status: 'draft', createdAt: Date.now(), day: room.day, victimId: victim.id, culpritId: culprit.id,
         excludeGM: !!d.excludeGM, difficulty: str(d.difficulty, 20) || '보통', notes: str(d.notes, 1000), file: null, warnings: [],
-        clueGiven: {}, sentAt: null, bodyAt: null,
+        clueGiven: {}, sentAt: null, bodyAt: null, sealed, revealed: false, pointsUsed: 0,
       };
       room.cases.push(c);
       broadcast(room);
@@ -917,13 +974,10 @@ io.on('connection', (socket) => {
     ({ id, text }, reply) => {
       const c = findCase(id);
       if (!c) return reply({ error: '사건을 찾을 수 없습니다.' });
+      if (c.sentAt) return reply({ error: '이미 메일을 보낸 사건입니다.' });
       const res = caseAI.parseCaseText(str(text, 300000));
       if (res.error) return reply({ error: res.error });
-      c.file = res.file;
-      c.warnings = res.warnings;
-      c.clueGiven = {};
-      broadcast(room);
-      reply({ ok: true, warnings: res.warnings });
+      caseFileReady(c, res.file, reply);
     },
     { gm: true }
   );
@@ -934,18 +988,17 @@ io.on('connection', (socket) => {
       const c = findCase(id);
       if (!c) return reply({ error: '사건을 찾을 수 없습니다.' });
       if (c.generating) return reply({ error: '이미 생성 중입니다.' });
+      if (c.sentAt) return reply({ error: '이미 메일을 보낸 사건입니다.' });
       c.generating = true;
       broadcast(room);
+      let file;
       try {
-        const file = await caseAI.generateCase(room, c);
-        c.file = file;
-        c.warnings = caseAI.checkCase(file);
-        c.clueGiven = {};
+        file = await caseAI.generateCase(room, c);
       } finally {
         c.generating = false;
         broadcast(room);
       }
-      reply({ ok: true, warnings: c.warnings });
+      caseFileReady(c, file, reply);
     },
     { gm: true }
   );
@@ -955,6 +1008,7 @@ io.on('connection', (socket) => {
     ({ id, file }, reply) => {
       const c = findCase(id);
       if (!c) return reply({ error: '사건을 찾을 수 없습니다.' });
+      if (isSealed(c)) return reply({ error: '봉인된 사건은 수정할 수 없습니다.' });
       const res = caseAI.CaseSchema.safeParse(file);
       if (!res.success) return reply({ error: `형식 오류: ${res.error.issues.slice(0, 3).map((i) => `${i.path.join('.')}: ${i.message}`).join(' / ')}` });
       c.file = res.data;
@@ -970,12 +1024,7 @@ io.on('connection', (socket) => {
       const c = findCase(id);
       if (!c?.file) return reply({ error: '사건 파일이 없습니다.' });
       if (!room.characters[c.victimId] || !room.characters[c.culpritId]) return reply({ error: '피해자나 흑막 캐릭터가 삭제되었습니다.' });
-      const f = c.file;
-      const timeline = f.timeline.map((t) => `· ${t.time} — ${t.event}`).join('\n');
-      sendMail(room, c.culpritId, f.culpritMail.subject, `${f.culpritMail.body}\n\n──── 사건 경위 ────\n${timeline}`, { caseId: c.id, kind: 'culprit' });
-      sendMail(room, c.victimId, f.victimMail.subject, f.victimMail.body, { caseId: c.id, kind: 'victim' });
-      c.sentAt = Date.now();
-      c.status = 'sent';
+      sendCaseMails(c);
       broadcast(room);
     },
     { gm: true }
@@ -985,6 +1034,7 @@ io.on('connection', (socket) => {
     'case:clue',
     ({ id, index, charIds }, reply) => {
       const c = findCase(id);
+      if (isSealed(c) && !c.bodyAt) return reply({ error: '봉인된 사건의 단서는 시체 발견 뒤에 열립니다.' });
       const clue = c?.file?.clues[index];
       const targets = arr(charIds, 50).filter((x) => room.characters[x]);
       if (!clue || !targets.length) return reply({ error: '받을 캐릭터를 고르세요.' });
@@ -1011,6 +1061,44 @@ io.on('connection', (socket) => {
       if (v) v.alive = false;
       bodyDiscovered(room, pid, `시체가 발견되었습니다! 일정 시간의 「수사」 후, 「학급재판」을 시작합니다!\n\n━━ 모노쿠마 파일 ━━\n${c.file.monokumaFile}`);
       c.bodyAt = Date.now();
+      broadcast(room);
+    },
+    { gm: true }
+  );
+
+  // 재판: 사건 파일의 다음 논점을 논스톱 의논 발언으로 낸다 (정답은 봉인된 채 자동 판정)
+  on(
+    'case:point',
+    ({ id }, reply) => {
+      const c = findCase(id);
+      const points = c?.file?.trialPoints || [];
+      const i = c?.pointsUsed || 0;
+      if (!points[i]) return reply({ error: '남은 논점이 없습니다.' });
+      const tp = points[i];
+      c.pointsUsed = i + 1;
+      trialPush(room, { type: 'point', index: i + 1, topic: tp.topic, text: tp.falseClaim, answerName: tp.answerClue, caseId: c.id, author: '모노쿠마' });
+      broadcast(room);
+    },
+    { gm: true }
+  );
+
+  // 진상 공개: 봉인을 풀고 모두에게 흑막을 알린다
+  function revealCase(c, intro) {
+    c.revealed = true;
+    const k = room.characters[c.culpritId];
+    trialPush(room, {
+      type: 'announce',
+      text: `${intro}이번 사건 「${c.file?.title || ''}」의 흑막은… 「${k?.name || '?'}」였습니다!${c.file ? `\n\n${c.file.overview}` : ''}`,
+    });
+    sendTrialLog(room);
+  }
+
+  on(
+    'case:reveal',
+    ({ id }, reply) => {
+      const c = findCase(id);
+      if (!c?.file) return reply({ error: '사건 파일이 없습니다.' });
+      revealCase(c, '');
       broadcast(room);
     },
     { gm: true }
@@ -1145,7 +1233,9 @@ io.on('connection', (socket) => {
     if (!target || !c || !ev) return reply({ error: '쏠 수 없습니다.' });
     if (!c.bullets.includes(evidenceId)) return reply({ error: `${c.name} 은(는) 그 언령을 가지고 있지 않습니다.` });
     const agree = kind === 'agree';
-    const result = target.answerId ? (target.answerId === evidenceId ? 'break' : 'miss') : 'pending';
+    const result = target.answerId
+      ? target.answerId === evidenceId ? 'break' : 'miss'
+      : target.answerName ? (ev.name === target.answerName ? 'break' : 'miss') : 'pending';
     const quote = target.text.replace(/[{}]/g, '');
     trialPush(room, {
       type: 'shoot', kind: agree ? 'agree' : 'refute', result, targetId: target.id, evidenceId,
@@ -1222,6 +1312,17 @@ io.on('connection', (socket) => {
         .map(([id, n]) => `${room.characters[id]?.name || '?'} ${n}표`);
       trialPush(room, { type: 'announce', text: `투표 결과 — ${lines.join(' / ') || '투표 없음'}` });
       splash(room, { kind: 'result' });
+      const c = [...room.cases].reverse().find((x) => x.sentAt && x.status !== 'closed' && !x.revealed);
+      if (c) {
+        const sorted = Object.entries(tally).sort((a, b) => b[1] - a[1]);
+        const top = sorted[0] && (!sorted[1] || sorted[1][1] < sorted[0][1]) ? sorted[0][0] : null;
+        const correct = top === c.culpritId;
+        setTimeout(() => {
+          revealCase(c, correct ? '정답입니다~!! ' : '아쉽게도 오답! ');
+          splash(room, { kind: correct ? 'correct' : 'wrong' });
+          broadcast(room);
+        }, 2500);
+      }
       broadcast(room);
     },
     { gm: true }
@@ -1302,7 +1403,7 @@ io.on('connection', (socket) => {
       room.gmId = p.id;
       notice(room, `${p.nickname} 님이 새 GM이 되었습니다.`);
       broadcast(room);
-      eachSocket(room, (s, id) => s.emit('trial:log', room.trial.messages.map((m) => trialMsgView(m, id === room.gmId))));
+      sendTrialLog(room);
     },
     { gm: true }
   );
@@ -1343,7 +1444,7 @@ io.on('connection', (socket) => {
       Object.assign(room, migrate(next));
       // 주인 계정이 없는 캐릭터는 현재 GM 소유로
       Object.values(room.characters).forEach((c) => !room.players[c.ownerId] && (c.ownerId = room.gmId));
-      eachSocket(room, (s, id) => s.emit('trial:log', room.trial.messages.map((m) => trialMsgView(m, id === room.gmId))));
+      sendTrialLog(room);
       broadcast(room);
       reply({ ok: true });
     },

@@ -180,6 +180,8 @@ function showSplash({ kind, name, color, skill, text, level, max }) {
     execution: '<small>PUNISHMENT TIME</small>오시오키 타임',
     vote: '<small>VOTE</small>투표 타임!',
     result: '<small>VOTE RESULT</small>투표 결과',
+    correct: '<small>CLASS TRIAL</small>정답!!',
+    wrong: '<small>CLASS TRIAL</small>오답…',
     skill: `${n}〈${esc(skill)}〉<small>SKILL</small>`,
     announce: `<small>📺 모노쿠마 방송</small><span class="announce-text">${esc(text)}</span>`,
     fragment: `<small>${esc(name)}</small>희망의 조각<small>친밀도 Lv.${esc(level)} / ${esc(max)}</small>`,

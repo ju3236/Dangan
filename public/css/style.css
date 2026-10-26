@@ -639,3 +639,18 @@ button.link { background: none; border: 0; color: inherit; cursor: pointer; padd
 .tp-card .btn { align-self: flex-start; margin-top: 4px; }
 .tp-card .warn { color: var(--orange); }
 .gm-notes { padding-left: 18px; font-size: 13px; }
+
+/* ---------- 봉인된 사건 ---------- */
+.seal-opt { background: #1d1430; padding: 10px 12px; border-left: 4px solid var(--purple); color: var(--text); }
+.seal-box { background: #1d1430; border-left: 4px solid var(--purple); padding: 12px 14px; line-height: 1.7; }
+.sealed-card { border-top-color: var(--purple); }
+.seal-tip { color: #d6b8ff; font-size: 12px; }
+textarea.masked { color: transparent; text-shadow: 0 0 7px rgba(255, 255, 255, .55); caret-color: #fff; }
+textarea.masked::selection { color: transparent; background: rgba(166, 107, 255, .4); }
+.lg.point { background: #2a0f1d; border-left-color: var(--pink); cursor: pointer; }
+.lg.point b { color: var(--pink); }
+.textbox.point .nameplate { background: var(--pink); color: #fff; }
+.splash.correct { background: radial-gradient(circle, rgba(255, 207, 58, .45), rgba(0, 0, 0, .85)); }
+.splash.correct .word { color: var(--yellow); --sc: var(--red); }
+.splash.wrong { background: rgba(60, 0, 20, .85); }
+.splash.wrong .word { color: #bbb; --sc: #000; }
