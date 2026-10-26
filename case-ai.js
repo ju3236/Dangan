@@ -6,6 +6,17 @@ const { z } = require('zod');
 const MODEL = process.env.CASE_AI_MODEL || 'claude-opus-5-5';
 
 const CaseSchema = z.object({
+  // 맨 앞에 두어 사건을 쓰기 전에 먼저 따져 보게 한다
+  plausibility: z
+    .array(z.object({ question: z.string(), answer: z.string() }))
+    .describe(
+      '사건 파일을 쓰기 전에 먼저 하는 개연성 점검 (6~10개). 최소한 다음을 묻고 답한다: ' +
+        '①흑막은 왜 하필 지금, 하필 이 피해자를 죽였나(프로필·관계·지난 이야기·동기 발표에 근거) ' +
+        '②흑막은 흉기와 도구를 언제 어디서 어떻게 손에 넣었나 ③흑막의 재능·체격·지식으로 그 수법이 실제로 가능한가 ' +
+        '④피해자는 왜 그 시각 그 장소에 있었나 ⑤다른 학생들은 그 시각 어디서 무엇을 하고 있었고, 왜 목격하지 못했나 ' +
+        '⑥흑막은 왜 이런 트릭/위장이 필요했나(단순한 방법 대신) ⑦흑막이 남긴 실수 = 결정적 단서는 무엇이고 왜 지우지 못했나 ' +
+        '⑧우연이나 운에 기대는 부분은 없나(있으면 고친다) ⑨교칙·야간 출입 제한과 모순은 없나'
+    ),
   title: z.string().describe('사건 제목. 예: "제1장 — 절망의 티타임"'),
   overview: z.string().describe('GM용 사건 전체 요약 (5~10문장). 누가, 왜, 어떻게, 무엇이 결정적 증거인지'),
   motive: z.string().describe('흑막의 동기'),
@@ -50,13 +61,25 @@ const CaseSchema = z.object({
 });
 
 // 예전에 만든 사건 파일(클라이맥스/오시오키 없음)도 불러올 수 있게
-const ImportSchema = CaseSchema.extend({ climax: CaseSchema.shape.climax.optional(), execution: CaseSchema.shape.execution.optional() });
+const ImportSchema = CaseSchema.extend({
+  plausibility: CaseSchema.shape.plausibility.optional(),
+  climax: CaseSchema.shape.climax.optional(),
+  execution: CaseSchema.shape.execution.optional(),
+});
 
 const SYSTEM = `당신은 「단간론파」 스타일 학급재판 역극의 사건 설계자입니다. 한국어로 씁니다.
 친구들이 캐릭터를 만들어 일상·조사·학급재판을 역극으로 진행하고, 사람 GM이 당신이 만든 사건 파일을 보고 진행합니다.
 
 설계 원칙:
 - 피해자와 흑막은 이미 정해져 있습니다. 바꾸지 마세요.
+- 가장 중요한 것은 개연성입니다. 플레이어가 진상을 듣고 "그래서 그랬구나" 하고 납득해야 합니다.
+  · 동기: 흑막의 프로필·성격·관계·지난 이야기·모노치라가 준 동기에서 자연스럽게 나와야 합니다. "갑자기 미쳐서" 같은 동기는 금지.
+  · 수단: 흉기와 도구는 학원 안(장소 목록, 매점 상품, 캐릭터 소지품)에서 구할 수 있는 것만. 언제 어디서 손에 넣었는지 정하고, 그 흔적을 단서로 남기세요.
+  · 기회: 흑막·피해자·다른 학생 모두의 동선을 정하세요. 피해자가 그 장소에 간 이유가 있어야 하고, 다른 학생이 목격하지 못한 이유도 있어야 합니다.
+  · 트릭은 사람이 실제로 할 수 있는 크기로. 흑막의 재능·체격·지식으로 가능한지 따지고, 운이나 우연에 기대는 장치는 쓰지 마세요.
+  · 흑막은 완벽하지 않습니다. 계획에 없던 작은 실수 하나가 결정적 단서가 되게 하고, 왜 그걸 지우지 못했는지도 정하세요.
+  · 단순한 계획이 더 설득력 있습니다. 트릭이 필요하다면 흑막이 왜 그런 수고를 했는지(알리바이 확보, 다른 사람에게 혐의 돌리기 등) 이유가 있어야 합니다.
+- 흑막 플레이어는 사건 전후를 직접 역극으로 연기해야 합니다. 흑막 메일에 "사건 전까지 해 둘 행동"과 "조사·재판에서 해도 되는 거짓말, 하면 안 되는 말"을 구체적으로 적어 주세요.
 - 페어플레이: 핵심 단서만으로 흑막을 논리적으로 특정할 수 있어야 하고, 모든 재판 논점의 answerClue는 clues 안의 이름과 정확히 같아야 합니다.
 - 트릭은 난이도에 맞추되, 단서로 증명 가능한 것만 사용하세요. 초자연적 요소는 금지입니다.
 - 캐릭터의 재능·프로필·스킬·관계(친밀도)·지금까지의 역극 내용을 활용하고, 이미 일어난 일과 모순되지 않게 하세요.
@@ -83,6 +106,8 @@ function buildContext(room, { victimId, culpritId, difficulty, notes }) {
   const lines = [];
   lines.push(`# 학원: ${room.title} (현재 ${room.day}일째)`);
   lines.push(`\n## 장소 목록\n${room.locations.join(', ')}`);
+  if (room.nightClosed?.length) lines.push(`(야간에는 출입 금지: ${room.nightClosed.join(', ')})`);
+  if (room.shop?.items?.length) lines.push(`\n## 매점 상품 (학생이 구할 수 있는 물건)\n${room.shop.items.map((i) => `${i.name}${i.desc ? `(${cut(i.desc, 60)})` : ''}`).join(', ')}`);
   lines.push(`\n## 교칙\n${room.rules.map((r, i) => `${i + 1}. ${r}`).join('\n')}`);
   lines.push('\n## 학생');
   for (const c of chars) {
@@ -94,7 +119,8 @@ function buildContext(room, { victimId, culpritId, difficulty, notes }) {
       `- ${c.name} / ${c.talent || '재능 미상'}${c.npc ? ' / NPC' : ''}\n  프로필: ${cut(c.profile, 600).replace(/\n/g, ' ')}` +
         (c.skills.length ? `\n  스킬: ${c.skills.map((s) => `${s.name}(${cut(s.desc, 100)})`).join('; ')}` : '') +
         (c.likes ? `\n  좋아하는 것: ${c.likes}` : '') +
-        (c.dislikes ? `\n  싫어하는 것: ${c.dislikes}` : '')
+        (c.dislikes ? `\n  싫어하는 것: ${c.dislikes}` : '') +
+        (c.inventory?.length ? `\n  소지품: ${c.inventory.map((i) => i.name).join(', ')}` : '')
     );
   }
   const aff = Object.entries(room.affinity || {})
@@ -105,9 +131,17 @@ function buildContext(room, { victimId, culpritId, difficulty, notes }) {
     lines.push('\n## 지난 이야기 (이미 일어난 일 — 여기와 모순되지 않게, 복선과 관계를 이어받아 주세요)');
     for (const l of room.lore) lines.push(`### ${l.title}\n${cut(l.text, 30000)}`);
   }
+  // 모노치라가 준 동기 (전체 방송 + 이번 피해자·흑막에게 간 개인 동기 메일)
+  const motives = (room.notices || []).filter((n) => n.text?.startsWith('📼 동기 발표')).slice(-3).map((n) => n.text);
+  const personal = (room.mails || []).filter((m) => m.kind === 'motive' && [victimId, culpritId].includes(m.charId)).slice(-4);
+  if (motives.length || personal.length) {
+    lines.push('\n## 모노치라가 준 동기');
+    motives.forEach((t) => lines.push(`- ${cut(t, 600)}`));
+    personal.forEach((m) => lines.push(`- ${name(m.charId)} 에게 온 개인 동기: ${cut(m.body, 800).replace(/\n/g, ' ')}`));
+  }
   const past = (room.cases || []).filter((c) => c.status !== 'draft' && c.file);
   if (past.length) lines.push(`\n## 이전 사건\n${past.map((c) => `- ${c.file.title}: 피해자 ${name(c.victimId)}, 흑막 ${name(c.culpritId)}`).join('\n')}`);
-  const posts = room.posts.filter((p) => p.board !== 'free').slice(-30);
+  const posts = room.posts.filter((p) => p.board !== 'free').slice(-40);
   if (posts.length) {
     lines.push('\n## 최근 역극 기록 (오래된 순)');
     for (const p of posts) {

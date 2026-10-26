@@ -191,6 +191,7 @@ function fileView(c) {
       <section><h3>사건 개요</h3><p class="pre">${esc(f.overview)}</p>
         <dl class="case-facts"><dt>동기</dt><dd>${esc(f.motive)}</dd><dt>수법</dt><dd>${esc(f.method)}</dd><dt>흉기</dt><dd>${esc(f.weapon)}</dd>
         <dt>현장</dt><dd>${esc(f.crimeScene)}</dd><dt>사망 시각</dt><dd>${esc(f.timeOfDeath)}</dd></dl></section>
+      ${f.plausibility?.length ? `<section><h3>개연성 점검</h3><details><summary>AI가 스스로 따져 본 동기·수단·기회 (${f.plausibility.length}개)</summary><dl class="case-facts">${f.plausibility.map((q) => `<dt>Q</dt><dd><b>${esc(q.question)}</b><br>${esc(q.answer)}</dd>`).join('')}</dl></details></section>` : ''}
       <section><h3>타임라인</h3><ul class="timeline">${f.timeline.map((t) => `<li><b>${esc(t.time)}</b> ${esc(t.event)}</li>`).join('')}</ul></section>
       <section><h3>모노쿠마 파일 <small>(시체 발견 때 공개)</small></h3><pre class="mk-file">${esc(f.monokumaFile)}</pre></section>
       <section><h3>비밀 메일</h3>
