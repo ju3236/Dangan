@@ -5,212 +5,52 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>단간론파 역극</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
   <!-- 로비 -->
-  <section id="lobby" class="screen">
+  <section id="lobby" class="hidden">
     <div class="lobby-box">
       <h1 class="logo">DANGAN<span>RP</span></h1>
       <p class="sub">희망과 절망의 역극 — 일상 · 조사 · 학급재판</p>
-      <label>닉네임<input id="nickname" maxlength="20" placeholder="당신의 이름" /></label>
-      <div class="lobby-cols">
-        <div class="card">
-          <h3>방 만들기 (GM)</h3>
-          <input id="roomTitle" maxlength="60" placeholder="방 제목 (예: 희망봉 학원)" />
-          <button id="createBtn" class="btn pink">새 방 만들기</button>
-        </div>
-        <div class="card">
-          <h3>방 참가</h3>
-          <input id="joinCode" maxlength="10" placeholder="방 코드 5자리" />
-          <button id="joinBtn" class="btn">참가하기</button>
-        </div>
+      <div class="lobby-tabs">
+        <button data-mode="join" class="active">방 참가 / 로그인</button>
+        <button data-mode="create">새 방 만들기 (GM)</button>
       </div>
-      <p id="lobbyError" class="error"></p>
+      <form id="lobbyForm" class="card stack">
+        <label class="mode-join">방 코드<input id="lCode" maxlength="10" autocomplete="off" placeholder="5자리 코드" /></label>
+        <label class="mode-create hidden">방 제목<input id="lTitle" maxlength="60" placeholder="예: 희망봉 학원" /></label>
+        <label>닉네임 (계정 이름)<input id="lNick" maxlength="20" autocomplete="username" required /></label>
+        <label>비밀번호<input id="lPass" type="password" maxlength="100" autocomplete="current-password" required /></label>
+        <p class="hint">처음이면 입력한 닉네임/비밀번호로 계정이 만들어집니다. 다른 기기에서도 같은 닉네임·비밀번호로 들어오면 내 캐릭터를 그대로 쓸 수 있어요.</p>
+        <button class="btn pink" id="lSubmit">입장</button>
+        <p id="lError" class="error"></p>
+      </form>
     </div>
   </section>
 
-  <!-- 메인 -->
-  <section id="game" class="screen hidden">
+  <!-- 앱 -->
+  <section id="app" class="hidden">
     <header class="topbar">
-      <div class="room-info">
-        <strong id="roomTitleView"></strong>
-        <span class="code" title="클릭해서 복사">코드 <b id="roomCode"></b></span>
-      </div>
-      <div class="phase-info">
-        <span id="dayView" class="day"></span>
-        <span id="phaseView" class="phase-badge"></span>
-        <span id="locationView" class="loc"></span>
-      </div>
-      <div class="top-actions">
-        <button id="exportLogBtn" class="btn small ghost">로그 저장</button>
-        <button id="leaveBtn" class="btn small ghost">나가기</button>
-      </div>
+      <a class="brand" href="#/board/all"><b id="tTitle"></b><small>코드 <span id="tCode" title="초대 링크 복사"></span></small></a>
+      <div class="phase-info"><span id="tDay" class="day"></span><span id="tPhase" class="phase-badge"></span></div>
+      <nav class="mainnav">
+        <a href="#/board/all" data-nav="board">📋 게시판</a>
+        <a href="#/trial" data-nav="trial">⚖️ 학급재판</a>
+        <a href="#/handbook/roster" data-nav="handbook">📱 학생수첩</a>
+        <a href="#/shop" data-nav="shop">🏪 매점</a>
+        <a href="#/gm" data-nav="gm" class="gm-only">👑 GM</a>
+      </nav>
+      <div class="usermenu"><span id="tUser"></span><button id="logoutBtn" class="btn tiny ghost">로그아웃</button></div>
     </header>
-
-    <main class="layout">
-      <!-- 왼쪽: 캐릭터 -->
-      <aside class="panel left">
-        <div class="panel-head">
-          <h2>학생 명부</h2>
-          <button id="newCharBtn" class="btn small pink">+ 캐릭터</button>
-        </div>
-        <div id="charList" class="char-list"></div>
-        <div class="panel-head"><h2>접속자</h2></div>
-        <ul id="playerList" class="player-list"></ul>
-      </aside>
-
-      <!-- 가운데: 로그 -->
-      <section class="panel center">
-        <div id="log" class="log"></div>
-        <form id="chatForm" class="chat-form">
-          <div class="chat-opts">
-            <select id="speakAs" title="말하는 캐릭터"></select>
-            <select id="msgType">
-              <option value="say">대사</option>
-              <option value="action">행동/지문</option>
-              <option value="narration" class="gm-only">나레이션 (GM)</option>
-              <option value="announce" class="gm-only">모노쿠마 방송 (GM)</option>
-            </select>
-            <select id="diceSides" title="주사위">
-              <option value="6">d6</option>
-              <option value="20">d20</option>
-              <option value="100">d100</option>
-            </select>
-            <button type="button" id="diceBtn" class="btn small ghost">🎲</button>
-          </div>
-          <div class="chat-row">
-            <textarea id="chatInput" rows="2" placeholder="Enter로 전송, Shift+Enter 줄바꿈"></textarea>
-            <button class="btn pink" type="submit">전송</button>
-          </div>
-        </form>
-      </section>
-
-      <!-- 오른쪽: 파트별 탭 -->
-      <aside class="panel right">
-        <nav class="tabs">
-          <button data-tab="daily" class="active">일상</button>
-          <button data-tab="investigation">조사</button>
-          <button data-tab="trial">재판</button>
-          <button data-tab="gm" class="gm-only">GM</button>
-        </nav>
-
-        <div class="tab" id="tab-daily">
-          <h3>장소</h3>
-          <div id="locationList" class="loc-list"></div>
-          <p class="hint">현재 장소는 GM이 이동시킵니다. 메시지에는 현재 장소가 함께 기록됩니다.</p>
-          <h3>학생 수첩</h3>
-          <div id="profileView" class="profile-view"></div>
-        </div>
-
-        <div class="tab hidden" id="tab-investigation">
-          <h3>모노쿠마 파일</h3>
-          <pre id="fileView" class="file-view"></pre>
-          <h3>언령 (증거) <small id="evCount"></small></h3>
-          <form id="evForm" class="stack">
-            <input id="evName" maxlength="60" placeholder="언령 이름 (예: 깨진 손목시계)" required />
-            <textarea id="evDesc" rows="2" placeholder="설명"></textarea>
-            <button class="btn small pink">언령 입수</button>
-          </form>
-          <div id="evList" class="ev-list"></div>
-        </div>
-
-        <div class="tab hidden" id="tab-trial">
-          <h3>논스톱 의논</h3>
-          <p class="hint">발언에서 <b>{중괄호}</b>로 감싼 부분은 <span class="weak">약점</span>으로 표시됩니다. 약점을 클릭하고 언령을 골라 쏘세요!</p>
-          <div id="debate" class="debate"></div>
-          <form id="stForm" class="stack">
-            <textarea id="stText" rows="2" placeholder="발언 입력 (예: 범인은 {밤 10시}에 식당에 있었어!)"></textarea>
-            <select id="stAnswer" class="gm-only" title="정답 언령 (GM만, 선택)"></select>
-            <button class="btn small">발언 추가</button>
-          </form>
-          <h3>투표</h3>
-          <div id="votePanel"></div>
-        </div>
-
-        <div class="tab hidden gm-only" id="tab-gm">
-          <h3>진행</h3>
-          <div class="btn-grid">
-            <button class="btn small" data-phase="daily">일상 파트</button>
-            <button class="btn small" data-phase="investigation">조사 파트</button>
-            <button class="btn small" data-phase="trial">학급재판 개정</button>
-            <button class="btn small" data-phase="execution">처형</button>
-            <button class="btn small red" id="bodyBtn">시체 발견 방송</button>
-            <button class="btn small" id="dayPrev">◀ 날짜</button>
-            <button class="btn small" id="dayNext">날짜 ▶</button>
-          </div>
-          <h3>장소 목록 <small>(쉼표로 구분)</small></h3>
-          <textarea id="locEdit" rows="2"></textarea>
-          <button id="locSave" class="btn small">장소 저장</button>
-          <h3>모노쿠마 파일</h3>
-          <textarea id="fileEdit" rows="5" placeholder="피해자, 사망 추정 시각, 사인, 외상 등"></textarea>
-          <button id="fileSave" class="btn small">파일 공개/갱신</button>
-          <h3>투표</h3>
-          <div class="btn-grid">
-            <button class="btn small" id="voteOpen">투표 시작</button>
-            <button class="btn small pink" id="voteReveal">결과 공개</button>
-            <button class="btn small ghost" id="voteReset">초기화</button>
-          </div>
-          <h3>논스톱 의논</h3>
-          <button class="btn small ghost" id="stClear">발언 전부 지우기</button>
-          <h3>방 관리</h3>
-          <input id="titleEdit" maxlength="60" placeholder="방 제목" />
-          <div class="btn-grid">
-            <button class="btn small" id="titleSave">제목 변경</button>
-            <button class="btn small" id="npcBtn">NPC 만들기</button>
-            <button class="btn small" id="exportBtn">방 백업(JSON)</button>
-            <label class="btn small">백업 불러오기<input type="file" id="importFile" accept=".json" hidden /></label>
-            <button class="btn small red" id="clearLogBtn">로그 초기화</button>
-          </div>
-          <p class="hint">GM 넘기기: 접속자 목록에서 이름 옆 👑 버튼</p>
-        </div>
-      </aside>
-    </main>
+    <main id="view"></main>
   </section>
 
-  <!-- 캐릭터 편집 -->
-  <dialog id="charDialog">
-    <form method="dialog" id="charForm" class="stack">
-      <h2 id="charDialogTitle">캐릭터</h2>
-      <div class="char-edit">
-        <div class="portrait-edit">
-          <img id="cImgPreview" alt="" />
-          <label class="btn small">이미지 업로드<input type="file" id="cImgFile" accept="image/*" hidden /></label>
-        </div>
-        <div class="stack grow">
-          <input id="cName" maxlength="40" placeholder="이름" required />
-          <input id="cTalent" maxlength="60" placeholder="초고교급 ○○" />
-          <input id="cImg" placeholder="이미지 URL (선택)" />
-          <label class="row">이름 색 <input type="color" id="cColor" value="#ff3e8a" /></label>
-        </div>
-      </div>
-      <textarea id="cProfile" rows="4" placeholder="프로필 (키, 생일, 좋아하는 것, 성격...)"></textarea>
-      <div class="row end">
-        <button type="button" id="cDelete" class="btn small red">삭제</button>
-        <button value="cancel" formnovalidate class="btn small ghost">취소</button>
-        <button id="cSave" value="save" class="btn small pink">저장</button>
-      </div>
-    </form>
-  </dialog>
-
-  <!-- 언령 선택 -->
-  <dialog id="shootDialog">
-    <form method="dialog" class="stack">
-      <h2>언령 장전</h2>
-      <p id="shootTarget" class="shoot-target"></p>
-      <div id="bulletList" class="bullet-list"></div>
-      <div class="row end">
-        <button value="cancel" class="btn small ghost">취소</button>
-        <button type="button" id="agreeBtn" class="btn small">동의한다!</button>
-        <button type="button" id="refuteBtn" class="btn small pink">그건 틀렸어!</button>
-      </div>
-    </form>
-  </dialog>
-
   <div id="splash" class="splash hidden"></div>
+  <div id="toasts"></div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="app.js"></script>
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>
