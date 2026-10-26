@@ -169,7 +169,7 @@ function makeFile(c, seal = false) {
           <li>${seal ? '복사한 답변을 아래에 붙여넣기 (내용은 가려져 보입니다)' : 'Claude의 답변 전체를 복사해서 아래에 붙여넣기'}<textarea id="pasteCase" class="${seal ? 'masked' : ''}" rows="5" placeholder="Claude가 준 JSON(코드 블록 포함)을 그대로 붙여넣으세요"></textarea>
             <button class="btn small pink" id="importCase">${seal ? '불러오고 바로 메일 보내기' : '불러오기'}</button></li>
         </ol>
-        <p class="hint">요청문에는 캐릭터 프로필, 친밀도, 최근 역극 기록, 추첨 결과가 들어 있어요. 결과가 마음에 안 들면 그 채팅에서 고쳐 달라고 한 뒤 다시 붙여넣으면 됩니다.</p>
+        <p class="hint">요청문에는 캐릭터 프로필·소지품, 친밀도, 지난 이야기, 최근 역극 기록, 동기, 추첨 결과가 들어 있고, AI가 먼저 「개연성 점검」을 한 뒤 사건을 씁니다. 「사건에 바라는 점」은 기본 원칙보다 우선해요. 결과가 마음에 안 들면 그 채팅에서 고쳐 달라고 한 뒤 다시 붙여넣으면 됩니다.</p>
       </div>
       ${s.caseAI ? `<div class="make-box">
         <h3>방법 2 · AI로 바로 생성</h3>
