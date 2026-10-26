@@ -6,13 +6,14 @@ const BOARD = { notice: '공지', daily: '일상', investigation: '조사', free
 
 function chapters() {
   const ends = store.trial.filter((m) => m.type === 'phase' && m.phase === 'execution').map((m) => m.ts);
-  const list = [];
+  const first = store.state.chapterStart || 1; // 카페 등에서 앞 챕터를 했다면 그다음 번호부터
+  const list = (store.state.lore || []).map((l) => ({ id: 'lore:' + l.id, label: `📚 ${l.title}`, lore: l }));
   let start = 0;
   ends.forEach((end, i) => {
-    list.push({ id: String(i + 1), label: `제${i + 1}장`, start, end: end + 15 * 60000 }); // 처형 연출 직후까지
+    list.push({ id: String(i + 1), label: `제${first + i}장`, start, end: end + 15 * 60000 }); // 처형 연출 직후까지
     start = end + 15 * 60000;
   });
-  list.push({ id: String(ends.length + 1), label: `제${ends.length + 1}장 (진행 중)`, start, end: Infinity });
+  list.push({ id: String(ends.length + 1), label: `제${first + ends.length}장 (진행 중)`, start, end: Infinity });
   return list;
 }
 
@@ -80,12 +81,14 @@ function itemsHTML(items) {
     .join('');
 }
 
+const loreHTML = (l) => `<div class="lb-lore">${esc(l.text)}</div>`;
+
 function current() {
   const list = chapters();
   const sel = $('#lbRange')?.value || list[list.length - 1].id;
   const range = sel === 'all' ? { start: 0, end: Infinity, label: '전체' } : list.find((c) => c.id === sel) || list[list.length - 1];
   const opts = { board: $('#lbBoard')?.checked ?? true, trial: $('#lbTrial')?.checked ?? true, ooc: $('#lbOoc')?.checked ?? false };
-  return { list, sel, range, opts, items: collect(range, opts) };
+  return { list, sel, range, opts, items: range.lore ? [] : collect(range, opts) };
 }
 
 export function logbookHTML() {
@@ -99,7 +102,7 @@ export function logbookHTML() {
       <label class="chk"><input type="checkbox" id="lbOoc" ${opts.ooc ? 'checked' : ''}> OOC 포함</label>
       <span class="hint">챕터는 「처형」을 기준으로 나뉩니다. 비밀 메일은 포함되지 않아요.</span>
     </div>
-    <div class="logbook"><h2 class="lb-title">${esc(store.state.title)} — ${esc(range.label)}</h2>${itemsHTML(items) || '<p class="hint">이 범위에는 기록이 없습니다.</p>'}</div>`;
+    <div class="logbook"><h2 class="lb-title">${esc(store.state.title)} — ${esc(range.label)}</h2>${range.lore ? loreHTML(range.lore) : itemsHTML(items) || '<p class="hint">이 범위에는 기록이 없습니다.</p>'}</div>`;
 }
 
 const BOOK_CSS = `body{font-family:'Noto Sans KR',sans-serif;max-width:760px;margin:40px auto;padding:0 20px;line-height:1.8;color:#222;background:#fbf8f2}
@@ -118,16 +121,16 @@ export function bindLogbook(el, rerender) {
   const { sel, range, items } = current();
   const title = `${store.state.title} — ${range.label}`;
   // 파일 이름은 영문으로 (브라우저에 따라 한글 이름이 'download'로 바뀌는 경우가 있어서)
-  const file = `dangan-${store.state.code}-logbook-${sel === 'all' ? 'all' : 'ch' + sel}`;
+  const file = `dangan-${store.state.code}-logbook-${sel === 'all' ? 'all' : range.lore ? 'story' : 'ch' + sel}`;
   const h = $('#lbHtml', el);
   if (h)
     h.onclick = () =>
-      download(`${file}.html`, `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${BOOK_CSS}</style></head><body><h2 class="lb-title">${esc(title)}</h2>${itemsHTML(items)}</body></html>`, 'text/html');
+      download(`${file}.html`, `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${BOOK_CSS}.lb-lore{white-space:pre-wrap}</style></head><body><h2 class="lb-title">${esc(title)}</h2>${range.lore ? loreHTML(range.lore) : itemsHTML(items)}</body></html>`, 'text/html');
   const t = $('#lbTxt', el);
   if (t)
     t.onclick = () => {
       const div = document.createElement('div');
-      div.innerHTML = itemsHTML(items).replace(/<br>/g, '\n').replace(/<\/(p|div|h3|h4|article|section)>/g, '$&\n');
+      div.innerHTML = (range.lore ? loreHTML(range.lore) : itemsHTML(items)).replace(/<br>/g, '\n').replace(/<\/(p|div|h3|h4|article|section)>/g, '$&\n');
       download(`${file}.txt`, `${title}\n\n${div.textContent.replace(/\n{3,}/g, '\n\n')}`);
     };
 }

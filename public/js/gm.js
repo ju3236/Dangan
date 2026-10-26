@@ -6,6 +6,7 @@ import { soundAdminHTML, bindSoundAdmin } from './audio.js';
 
 let shopRows = null; // 편집 중인 매점 상품 id 목록 (null이면 서버 상태 그대로)
 let backups = null; // 자동 백업 목록 (열었을 때만 불러온다)
+let editingLore = null; // 수정 중인 지난 이야기 id
 const BACKUP_REASON = {
   auto: '자동', manual: '직접', 'before-import': '불러오기 직전', 'before-restore': '되돌리기 직전',
   'before-clear': '재판 로그 비우기 직전', 'before-case-delete': '사건 삭제 직전', 'before-char-delete': '캐릭터 삭제 직전',
@@ -120,13 +121,29 @@ export function render(el, name, args, what) {
     </section>
 
     <section class="gm-card"><h2>학원 설정</h2>
-      <label>방 제목<input id="setTitle" value="${esc(s.title)}" maxlength="60"></label>
+      <div class="row"><label class="grow">방 제목<input id="setTitle" value="${esc(s.title)}" maxlength="60"></label>
+        <label>시작 챕터<input id="setChapter" type="number" min="1" value="${s.chapterStart}" class="num" title="카페에서 제1장을 했다면 2"></label></div>
       <label>장소 (한 줄에 하나)<textarea id="setLocs" rows="5">${esc(s.locations.join('\n'))}</textarea></label>
       <label>교칙 (한 줄에 하나)<textarea id="setRules" rows="6">${esc(s.rules.join('\n'))}</textarea></label>
       <label>🌙 야간 출입 금지 장소 (한 줄에 하나 — 야간 방송 뒤에는 이 장소로 글을 쓸 수 없어요)<textarea id="setNight" rows="3">${esc(s.nightClosed.join('\n'))}</textarea></label>
       <div class="row wrap"><button class="btn small pink" id="saveSettings">설정 저장</button>
         <label class="btn small">지도 이미지 업로드<input type="file" id="mapFile" accept="image/*" hidden></label>
         ${s.mapImage ? '<button class="btn small ghost" id="mapClear">지도 삭제</button>' : ''}</div>
+    </section>
+
+    <section class="gm-card wide"><h2>📚 지난 이야기</h2>
+      <p class="hint">카페 등 사이트 밖에서 진행한 챕터를 적어 두세요. 요약이든 원문 복사든 괜찮아요. AI 사건 설계 요청문에 「이미 일어난 일」로 들어가서, 새 사건이 앞 이야기와 모순되지 않고 복선과 관계를 이어받게 됩니다.
+        「모두 공개」로 두면 플레이어도 로그북에서 읽을 수 있어요. (그 챕터에서 사망한 캐릭터는 캐릭터 관리에서 사망 처리해 주세요)</p>
+      <div class="lore-list">${s.lore
+        .map((l) => `<div class="lore-row"><b>${esc(l.title)}</b><small>${l.public ? '모두 공개' : 'GM만'} · ${l.text.length.toLocaleString()}자</small>
+          <span class="grow"></span><button class="btn tiny ghost" data-lore-edit="${l.id}">수정</button><button class="btn tiny ghost" data-lore-del="${l.id}">삭제</button></div>`)
+        .join('') || '<p class="hint">아직 기록이 없습니다.</p>'}</div>
+      <div class="stack lore-form">
+        <div class="row"><input id="loreTitle" placeholder="제목 (예: 제1장 — 카페 진행 요약)" maxlength="80" class="grow">
+          <label class="chk"><input type="checkbox" id="lorePublic" checked> 모두 공개</label></div>
+        <textarea id="loreText" rows="8" placeholder="누가 어떻게 죽었는지, 흑막과 동기, 처형, 남은 떡밥, 캐릭터들의 관계 변화 등을 적어 주세요."></textarea>
+        <div class="row"><button class="btn small pink" id="loreSave">${editingLore ? '수정 저장' : '기록 추가'}</button>${editingLore ? '<button class="btn small ghost" id="loreCancel">취소</button>' : ''}</div>
+      </div>
     </section>
 
     <section class="gm-card"><h2>🎵 사운드</h2>${soundAdminHTML()}</section>
@@ -301,7 +318,7 @@ function bind(el) {
 
   on('saveSettings', async () => {
     const lines = (id) => $(id).value.split(/\n/).map((x) => x.trim()).filter(Boolean);
-    if (await emit('gm:settings', { title: $('#setTitle').value, locations: lines('#setLocs'), rules: lines('#setRules'), nightClosed: lines('#setNight') })) toast('설정을 저장했습니다.');
+    if (await emit('gm:settings', { title: $('#setTitle').value, chapterStart: $('#setChapter').value, locations: lines('#setLocs'), rules: lines('#setRules'), nightClosed: lines('#setNight') })) toast('설정을 저장했습니다.');
   });
   const mf = $('#mapFile', el);
   if (mf)
@@ -316,6 +333,33 @@ function bind(el) {
       const on = !!b.dataset.on;
       if (confirm(on ? '이 플레이어에게도 GM 권한을 줄까요?' : '이 플레이어의 GM 권한을 해제할까요?')) emit('gm:role', { playerId: b.dataset.role, on });
     };
+  });
+  $$('[data-lore-edit]', el).forEach((b) => {
+    b.onclick = () => {
+      const l = store.state.lore.find((x) => x.id === b.dataset.loreEdit);
+      editingLore = l.id;
+      render(el);
+      $('#loreTitle').value = l.title;
+      $('#loreText').value = l.text;
+      $('#lorePublic').checked = l.public;
+      $('#loreTitle').scrollIntoView({ block: 'center' });
+    };
+  });
+  $$('[data-lore-del]', el).forEach((b) => (b.onclick = () => confirm('이 기록을 지울까요?') && emit('gm:loreDelete', { id: b.dataset.loreDel })));
+  on('loreCancel', () => {
+    editingLore = null;
+    render(el);
+    $('#loreTitle').value = '';
+    $('#loreText').value = '';
+  });
+  on('loreSave', async () => {
+    if (await emit('gm:lore', { id: editingLore, title: $('#loreTitle').value, text: $('#loreText').value, public: $('#lorePublic').checked })) {
+      editingLore = null;
+      render(el);
+      $('#loreTitle').value = '';
+      $('#loreText').value = '';
+      toast('저장했습니다.');
+    }
   });
   const loadBackups = async (ev = 'gm:backups') => {
     const r = await emit(ev);

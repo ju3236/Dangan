@@ -48,19 +48,21 @@ export function renderCase(el) {
 function drawForm() {
   const st = students().filter((c) => c.alive);
   const seal = $('#dSealed')?.checked ?? true;
+  const manual = !seal || ($('#dManual')?.checked ?? false);
   const opts = `<option value="">🎲 랜덤</option>${st.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}`;
   return `<section class="gm-card case-draw">
     <h2>새 사건 준비</h2>
     <p class="hint">피해자와 흑막을 추첨하고, AI로 사건 파일을 만든 뒤, 두 캐릭터의 학생수첩으로 비밀 메일을 보냅니다.</p>
     <label class="chk seal-opt"><input type="checkbox" id="dSealed" ${seal ? 'checked' : ''}> 🔒 <b>봉인 모드</b> — 추첨 결과와 사건 내용을 GM(나)도 모르게 하고, 당사자에게만 메일로 보내기 (GM도 플레이어로 참여할 때 추천)</label>
+    ${seal ? `<label class="chk"><input type="checkbox" id="dManual" ${manual ? 'checked' : ''}> 피해자·흑막 직접 지정하기 <small class="hint">(지정한 나는 알게 되지만, 다른 GM에게는 봉인됩니다)</small></label>` : ''}
     <div class="row wrap">
-      ${seal ? '' : `<label>피해자<select id="dVictim">${opts}</select></label>
-      <label>흑막<select id="dCulprit">${opts}</select></label>`}
+      ${manual ? `<label>피해자<select id="dVictim">${opts}</select></label>
+      <label>흑막<select id="dCulprit">${opts}</select></label>` : ''}
       <label>난이도<select id="dDiff"><option>쉬움</option><option selected>보통</option><option>어려움</option></select></label>
     </div>
     <label class="chk"><input type="checkbox" id="dExGM" ${seal ? '' : 'checked'}> 추첨에서 GM(나)의 캐릭터 제외</label>
     <label>사건에 바라는 점 (선택)<textarea id="dNotes" rows="2" placeholder="예: 밀실 트릭, 도서실이 배경, 동기는 과거의 비밀"></textarea></label>
-    <button class="btn pink" id="drawBtn">🎲 피해자 · 흑막 추첨</button>
+    <button class="btn pink" id="drawBtn">${manual ? '📝 이대로 사건 준비 (빈칸은 랜덤)' : '🎲 피해자 · 흑막 추첨'}</button>
   </section>`;
 }
 
@@ -218,11 +220,13 @@ function bind(el, c) {
   $$('[data-delcase]', el).forEach((b) => (b.onclick = () => confirm('이 사건 기록을 삭제할까요?') && emit('case:delete', { id: b.dataset.delcase })));
   const ds = $('#dSealed', el);
   if (ds) ds.onchange = () => renderCase(el);
+  const dm = $('#dManual', el);
+  if (dm) dm.onchange = () => renderCase(el);
   on('backCur', () => ((viewingId = null), renderCase(el)));
   on('drawBtn', async () => {
     const res = await emit('case:draw', {
       victimId: $('#dVictim')?.value, culpritId: $('#dCulprit')?.value, difficulty: $('#dDiff').value,
-      excludeGM: $('#dExGM').checked, notes: $('#dNotes').value, sealed: $('#dSealed').checked,
+      excludeGM: $('#dExGM').checked, notes: $('#dNotes').value, sealed: $('#dSealed').checked, manual: !!$('#dManual')?.checked,
     });
     if (res) {
       viewingId = null;

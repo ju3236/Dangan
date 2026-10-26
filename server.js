@@ -276,6 +276,8 @@ function createRoom(code, title) {
     freeTime: { ...FREE_TIME_DEFAULTS },
     timeOfDay: 'day',
     nightClosed: [],
+    lore: [], // 지난 이야기 (사이트 밖에서 진행한 챕터 기록 등)
+    chapterStart: 1,
     affinity: {},
     cases: [],
     mails: [],
@@ -289,6 +291,8 @@ function migrate(room) {
   room.freeTime = { ...FREE_TIME_DEFAULTS, ...(room.freeTime || {}) };
   room.timeOfDay = room.timeOfDay || 'day';
   room.nightClosed = room.nightClosed || [];
+  room.lore = room.lore || [];
+  room.chapterStart = room.chapterStart || 1;
   room.affinity = room.affinity || {};
   room.cases = room.cases || [];
   Object.values(room.players || {}).forEach((p) => (p.mediaKey = p.mediaKey || crypto.randomBytes(12).toString('hex')));
@@ -391,6 +395,8 @@ function publicState(room, pid) {
     phase: room.phase,
     timeOfDay: room.timeOfDay,
     nightClosed: room.nightClosed,
+    chapterStart: room.chapterStart,
+    lore: room.lore.filter((l) => gm || l.public),
     locations: room.locations,
     mapImage: room.mapImage,
     rules: room.rules,
@@ -1147,10 +1153,11 @@ io.on('connection', (socket) => {
     'case:draw',
     (d, reply) => {
       const sealed = d.sealed !== false;
+      const manual = !sealed || !!d.manual; // 봉인 모드에서도 직접 지정 가능 (지정한 사람만 알게 된다)
       const pool = drawPool(!!d.excludeGM);
-      const victim = (!sealed && room.characters[d.victimId]) || (pool.length ? pick(pool) : null);
+      const victim = (manual && room.characters[d.victimId]) || (pool.length ? pick(pool) : null);
       const rest = pool.filter((c) => c !== victim);
-      const culprit = (!sealed && room.characters[d.culpritId]) || (rest.length ? pick(rest) : null);
+      const culprit = (manual && room.characters[d.culpritId]) || (rest.length ? pick(rest) : null);
       if (!victim || !culprit || victim === culprit) return reply({ error: '추첨할 수 있는 학생이 2명 이상 필요합니다.' });
       room.cases.forEach((c) => c.status === 'draft' && !c.file && (c.status = 'closed'));
       const c = {
@@ -1791,8 +1798,33 @@ io.on('connection', (socket) => {
       if (typeof d.title === 'string') room.title = str(d.title, 60).trim() || room.title;
       if (Array.isArray(d.locations)) room.locations = arr(d.locations, 60).map((l) => str(l, 40).trim()).filter(Boolean);
       if (Array.isArray(d.rules)) room.rules = arr(d.rules, 60).map((l) => str(l, 500).trim()).filter(Boolean);
+      if (d.chapterStart !== undefined) room.chapterStart = int(d.chapterStart, 1, 1, 99);
       if (Array.isArray(d.nightClosed)) room.nightClosed = arr(d.nightClosed, 60).map((l) => str(l, 40).trim()).filter(Boolean);
       if (typeof d.mapImage === 'string') room.mapImage = imgRef(room, d.mapImage);
+      broadcast(room);
+    },
+    { gm: true }
+  );
+
+  // 지난 이야기: 카페 등 사이트 밖에서 진행한 챕터를 기록해 두면 AI 사건 설계에 참고된다
+  on(
+    'gm:lore',
+    ({ id, title, text, public: isPublic }, reply) => {
+      title = str(title, 80).trim();
+      text = str(text, 60000);
+      if (!title || !text.trim()) return reply({ error: '제목과 내용을 적어 주세요.' });
+      const l = id && room.lore.find((x) => x.id === id);
+      if (l) Object.assign(l, { title, text, public: !!isPublic, updatedAt: Date.now() });
+      else room.lore.push({ id: uid(), title, text, public: !!isPublic, ts: Date.now() });
+      broadcast(room);
+    },
+    { gm: true }
+  );
+
+  on(
+    'gm:loreDelete',
+    ({ id }) => {
+      room.lore = room.lore.filter((l) => l.id !== id);
       broadcast(room);
     },
     { gm: true }

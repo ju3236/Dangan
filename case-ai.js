@@ -101,6 +101,10 @@ function buildContext(room, { victimId, culpritId, difficulty, notes }) {
     .filter(([, v]) => v.points > 0)
     .map(([k, v]) => `${k.split('|').map(name).join(' ↔ ')}: ${v.points}점 (자유시간 ${v.events}회)`);
   if (aff.length) lines.push(`\n## 친밀도\n${aff.join('\n')}`);
+  if (room.lore?.length) {
+    lines.push('\n## 지난 이야기 (이미 일어난 일 — 여기와 모순되지 않게, 복선과 관계를 이어받아 주세요)');
+    for (const l of room.lore) lines.push(`### ${l.title}\n${cut(l.text, 30000)}`);
+  }
   const past = (room.cases || []).filter((c) => c.status !== 'draft' && c.file);
   if (past.length) lines.push(`\n## 이전 사건\n${past.map((c) => `- ${c.file.title}: 피해자 ${name(c.victimId)}, 흑막 ${name(c.culpritId)}`).join('\n')}`);
   const posts = room.posts.filter((p) => p.board !== 'free').slice(-30);
@@ -112,7 +116,8 @@ function buildContext(room, { victimId, culpritId, difficulty, notes }) {
       for (const c of p.comments.slice(0, 8)) lines.push(`  └ ${c.charId ? name(c.charId) : 'GM'}: ${cut(c.body, 160).replace(/\n/g, ' ')}`);
     }
   }
-  lines.push(`\n## 이번 사건 조건\n- 피해자: ${name(victimId)}\n- 흑막(범인): ${name(culpritId)}\n- 난이도: ${difficulty}`);
+  const chapter = (room.chapterStart || 1) + (room.cases || []).filter((c) => c.file && c.status === 'closed').length;
+  lines.push(`\n## 이번 사건 조건\n- 이번 사건은 「제${chapter}장」입니다 (사건 제목에 반영)\n- 피해자: ${name(victimId)}\n- 흑막(범인): ${name(culpritId)}\n- 난이도: ${difficulty}`);
   if (notes) lines.push(`- GM 요청: ${notes}`);
   lines.push('\n위 정보를 바탕으로 사건 파일을 설계해 주세요.');
   return lines.join('\n');

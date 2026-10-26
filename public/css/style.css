@@ -764,3 +764,8 @@ textarea.masked::selection { color: transparent; background: rgba(166, 107, 255,
 .lb-point { color: #c21e63; font-weight: 700; }
 .lb-phase { text-align: center; color: #c21e63; }
 .lb-ooc, .lb-sys { color: #999; font-size: 13px; }
+.lore-list { display: flex; flex-direction: column; }
+.lore-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+.lore-row small { color: var(--muted); }
+.lore-form { margin-top: 8px; }
+.lb-lore { white-space: pre-wrap; background: #fff; border: 1px solid #e6e1ea; padding: 14px 18px; }
