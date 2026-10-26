@@ -620,7 +620,7 @@ function saveLog() {
       default: return `[${t}] ${m.text}`;
     }
   });
-  download(`${store.state.title}-학급재판.txt`, `${store.state.title} 학급재판 로그\n\n${lines.join('\n')}`);
+  download(`dangan-${store.state.code}-trial-log.txt`, `${store.state.title} 학급재판 로그\n\n${lines.join('\n')}`);
 }
 
 // ---------- 언령 쏘기 ----------

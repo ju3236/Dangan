@@ -66,6 +66,68 @@ function scheduleSave() {
   }, 1000);
 }
 
+// ---------- 자동 백업 ----------
+// 방마다 내용이 바뀌었으면 10분마다 data/backups/<방코드>/ 에 스냅샷을 남긴다.
+// 최근 30개 + 그 이전은 하루 1개씩 14일치를 보관. 위험한 작업(불러오기, 로그 비우기 등) 직전에도 남긴다.
+const BACKUP_DIR = process.env.BACKUP_DIR || path.join(path.dirname(DATA_FILE), 'backups');
+const BACKUP_MINUTES = Number(process.env.BACKUP_MINUTES) || 10;
+const BACKUP_KEEP_RECENT = 30;
+const BACKUP_KEEP_DAYS = 14;
+const lastBackupSig = {};
+
+const roomForBackup = (room) => {
+  const { sessions, ...rest } = room;
+  return rest;
+};
+
+function snapshot(room, reason = 'auto') {
+  try {
+    const dir = path.join(BACKUP_DIR, room.code);
+    fs.mkdirSync(dir, { recursive: true });
+    const json = JSON.stringify(roomForBackup(room));
+    fs.writeFileSync(path.join(dir, `${Date.now()}-${reason}.json`), json);
+    lastBackupSig[room.code] = crypto.createHash('sha1').update(json).digest('hex');
+    pruneBackups(dir);
+  } catch (e) {
+    console.error('백업 실패:', e);
+  }
+}
+
+function listBackups(code) {
+  const dir = path.join(BACKUP_DIR, code);
+  try {
+    return fs
+      .readdirSync(dir)
+      .filter((n) => /^\d+-[\w-]+\.json$/.test(n))
+      .map((name) => ({ name, savedAt: Number(name.split('-')[0]), reason: name.replace(/^\d+-|\.json$/g, ''), size: fs.statSync(path.join(dir, name)).size }))
+      .sort((a, b) => b.savedAt - a.savedAt);
+  } catch {
+    return [];
+  }
+}
+
+function pruneBackups(dir) {
+  const list = listBackups(path.basename(dir));
+  const keep = new Set(list.slice(0, BACKUP_KEEP_RECENT).map((b) => b.name));
+  const days = new Set();
+  const cutoff = Date.now() - BACKUP_KEEP_DAYS * 86400000;
+  for (const b of list.slice(BACKUP_KEEP_RECENT)) {
+    const day = new Date(b.savedAt).toDateString();
+    if (b.savedAt > cutoff && !days.has(day)) {
+      days.add(day);
+      keep.add(b.name);
+    }
+  }
+  list.forEach((b) => !keep.has(b.name) && fs.unlinkSync(path.join(dir, b.name)));
+}
+
+setInterval(() => {
+  for (const room of Object.values(rooms)) {
+    const sig = crypto.createHash('sha1').update(JSON.stringify(roomForBackup(room))).digest('hex');
+    if (sig !== lastBackupSig[room.code]) snapshot(room, 'auto');
+  }
+}, BACKUP_MINUTES * 60000).unref();
+
 // 업로드된 이미지는 방 데이터 안에 보관하고 이 주소로 내려준다 (백업에도 함께 포함)
 app.get('/img/:code/:id', (req, res) => {
   const data = rooms[req.params.code]?.images?.[req.params.id];
@@ -262,6 +324,7 @@ const isSealed = (c) => !!c && c.sealed && !c.revealed;
 const caseById = (room, id) => room.cases.find((c) => c.id === id);
 
 function canSeeNotice(room, pid, n) {
+  if (n.toPlayers) return n.toPlayers.includes(pid);
   if (n.private) return n.charIds.some((id) => room.characters[id]?.ownerId === pid);
   return canSeeChars(room, pid, n.charIds);
 }
@@ -461,6 +524,19 @@ function addAffinity(room, aId, bId, delta, { event = false } = {}) {
   } else if (after < before) {
     notice(room, `💔 ${a.name} 와(과) ${b.name} 의 친밀도가 Lv.${after} (으)로 내려갔다…`, [a.id, b.id], { kind: 'affinity' });
   }
+}
+
+// 특정 플레이어에게만 가는 알림 (댓글, 답글, @멘션). 누른 사람 자신은 빼고
+function ping(room, pids, actorId, text, link) {
+  const to = [...new Set(pids)].filter((id) => id && id !== actorId && room.players[id]);
+  if (to.length) notice(room, text, [], { kind: 'ping', toPlayers: to, link });
+}
+
+// 글 속 '@캐릭터이름' → 그 캐릭터 주인들
+function mentionedOwners(room, text) {
+  return Object.values(room.characters)
+    .filter((c) => text.includes('@' + c.name))
+    .map((c) => c.ownerId);
 }
 
 // 친밀도 최대: 서로에게 「유대」 스킬과 특별 메일
@@ -676,6 +752,7 @@ io.on('connection', (socket) => {
 
   on('character:delete', ({ id }, reply) => {
     if (!ownChar(id)) return reply({ error: '권한이 없습니다.' });
+    snapshot(room, 'before-char-delete');
     delete room.characters[id];
     delete room.trial.votes[id];
     Object.keys(room.affinity).forEach((k) => k.split('|').includes(id) && delete room.affinity[k]);
@@ -724,6 +801,8 @@ io.on('connection', (socket) => {
       ts: Date.now(), editedAt: null, pinned: false, comments: [],
     };
     room.posts.push(post);
+    const who = room.characters[post.charId]?.name || me().nickname;
+    ping(room, mentionedOwners(room, `${title}\n${body}`), pid, `📣 ${who} 이(가) 「${title}」에서 당신의 캐릭터를 불렀습니다.`, `#/post/${post.id}`);
     broadcast(room);
     reply({ id: post.id });
   });
@@ -798,6 +877,12 @@ io.on('connection', (socket) => {
       id: uid(), parentId: parent ? parent.parentId || parent.id : null, charId: d.charId || null,
       spriteId: str(d.spriteId, 20) || null, authorId: pid, gm: isGM() && !d.charId, body, grants, ts: Date.now(),
     });
+    const who = room.characters[d.charId]?.name || (isGM() ? 'GM' : me().nickname);
+    const link = `#/post/${post.id}`;
+    const mentioned = mentionedOwners(room, body);
+    if (parent) ping(room, [parent.authorId], pid, `↳ ${who} 이(가) 「${post.title}」의 내 댓글에 답글을 남겼습니다.`, link);
+    ping(room, [post.authorId].filter((id) => id !== parent?.authorId && !mentioned.includes(id)), pid, `💬 ${who} 이(가) 「${post.title}」에 댓글을 남겼습니다.`, link);
+    ping(room, mentioned.filter((id) => id !== parent?.authorId), pid, `📣 ${who} 이(가) 「${post.title}」 댓글에서 당신의 캐릭터를 불렀습니다.`, link);
     broadcast(room);
     reply({ ok: true });
   });
@@ -949,6 +1034,7 @@ io.on('connection', (socket) => {
     };
     room.posts.push(post);
     notice(room, `💞 ${c.name} 이(가) ${partner.name} 와(과) 자유시간을 보냈다.`, [], { kind: 'affinity' });
+    ping(room, [partner.ownerId], pid, `💞 ${c.name} 이(가) ${partner.name} 와(과)의 자유시간 글을 올렸습니다. 댓글로 이어서 역극해 주세요!`, `#/post/${post.id}`);
     if (!c.npc && !partner.npc) addAffinity(room, c.id, partner.id, room.freeTime.eventPoints, { event: true });
     broadcast(room);
     reply({ id: post.id });
@@ -1250,7 +1336,10 @@ io.on('connection', (socket) => {
     'case:close',
     ({ id }) => {
       const c = findCase(id);
-      if (c) c.status = 'closed';
+      if (c) {
+        c.status = 'closed';
+        c.closedAt = Date.now();
+      }
       broadcast(room);
     },
     { gm: true }
@@ -1259,6 +1348,7 @@ io.on('connection', (socket) => {
   on(
     'case:delete',
     ({ id }) => {
+      snapshot(room, 'before-case-delete');
       room.cases = room.cases.filter((c) => c.id !== id);
       broadcast(room);
     },
@@ -1359,6 +1449,7 @@ io.on('connection', (socket) => {
       type, text, charId: c?.id || null, spriteId: c ? str(d.spriteId, 20) || null : null,
       author: me().nickname, authorId: pid, answerId,
     });
+    ping(room, mentionedOwners(room, text), pid, `📣 ${c?.name || me().nickname} 이(가) 학급재판에서 당신의 캐릭터를 불렀습니다.`, '#/trial');
     reply({ ok: true });
   });
 
@@ -1425,6 +1516,7 @@ io.on('connection', (socket) => {
   on(
     'trial:clear',
     () => {
+      snapshot(room, 'before-clear');
       room.trial.messages = [];
       room.trial.climax = null;
       room.trial.showdown = null;
@@ -1790,25 +1882,67 @@ io.on('connection', (socket) => {
     { gm: true }
   );
 
+  // 백업 데이터로 방 내용을 바꾼다 (계정과 GM은 그대로)
+  function applyBackup(data) {
+    const keep = { code: room.code, players: room.players, sessions: room.sessions, gmIds: room.gmIds };
+    const base = createRoom(room.code);
+    for (const k of Object.keys(base)) if (k in data) base[k] = data[k];
+    let next = { ...base, ...keep };
+    // 이미지 주소의 방 코드를 현재 방 코드로 바꾼다
+    if (data.code && data.code !== room.code) {
+      next = JSON.parse(JSON.stringify(next).split(`/img/${data.code}/`).join(`/img/${room.code}/`));
+    }
+    Object.keys(room).forEach((k) => delete room[k]);
+    Object.assign(room, migrate(next));
+    // 주인 계정이 없는 캐릭터는 현재 GM 소유로
+    Object.values(room.characters).forEach((c) => !room.players[c.ownerId] && (c.ownerId = room.gmIds[0]));
+    sendTrialLog(room);
+    broadcast(room);
+  }
+
   on(
     'gm:import',
     ({ data }, reply) => {
       if (!data || data.version !== VERSION) return reply({ error: '이 버전의 백업 파일이 아닙니다.' });
-      const keep = { code: room.code, players: room.players, sessions: room.sessions, gmIds: room.gmIds };
-      const base = createRoom(room.code);
-      for (const k of Object.keys(base)) if (k in data) base[k] = data[k];
-      let next = { ...base, ...keep };
-      // 이미지 주소의 방 코드를 현재 방 코드로 바꾼다
-      if (data.code && data.code !== room.code) {
-        next = JSON.parse(JSON.stringify(next).split(`/img/${data.code}/`).join(`/img/${room.code}/`));
-      }
-      Object.keys(room).forEach((k) => delete room[k]);
-      Object.assign(room, migrate(next));
-      // 주인 계정이 없는 캐릭터는 현재 GM 소유로
-      Object.values(room.characters).forEach((c) => !room.players[c.ownerId] && (c.ownerId = room.gmIds[0]));
-      sendTrialLog(room);
-      broadcast(room);
-      reply({ ok: true });
+      snapshot(room, 'before-import');
+      applyBackup(data);
+    },
+    { gm: true }
+  );
+
+  const backupPath = (name) => /^\d+-[\w-]+\.json$/.test(String(name)) && path.join(BACKUP_DIR, room.code, name);
+
+  on('gm:backups', (_, reply) => reply({ list: listBackups(room.code) }), { gm: true });
+
+  on(
+    'gm:backupNow',
+    (_, reply) => {
+      snapshot(room, 'manual');
+      reply({ list: listBackups(room.code) });
+    },
+    { gm: true }
+  );
+
+  on(
+    'gm:backupGet',
+    ({ name }, reply) => {
+      const f = backupPath(name);
+      if (!f || !fs.existsSync(f)) return reply({ error: '백업을 찾을 수 없습니다.' });
+      const { players, gmIds, ...rest } = JSON.parse(fs.readFileSync(f, 'utf8'));
+      reply({ data: rest });
+    },
+    { gm: true }
+  );
+
+  on(
+    'gm:backupRestore',
+    ({ name }, reply) => {
+      const f = backupPath(name);
+      if (!f || !fs.existsSync(f)) return reply({ error: '백업을 찾을 수 없습니다.' });
+      const data = JSON.parse(fs.readFileSync(f, 'utf8'));
+      snapshot(room, 'before-restore');
+      applyBackup(data);
+      notice(room, `💾 GM이 ${new Date(Number(name.split('-')[0])).toLocaleString('ko-KR')} 시점의 백업으로 되돌렸습니다.`);
     },
     { gm: true }
   );

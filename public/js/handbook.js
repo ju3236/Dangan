@@ -1,14 +1,15 @@
 // 전자학생수첩: 학생 명부 / 내 캐릭터(메달·스킬·언령·소지품) / 교칙 / 지도 / 알림
-import { $, $$, esc, emit, store, render as paint, modal, toast, isGM, charById, myChars, evidenceById, avatar, charSelectHTML, fmtTime } from './core.js';
+import { $, $$, esc, emit, store, local, notify, markPingsSeen, render as paint, modal, toast, isGM, charById, myChars, evidenceById, avatar, charSelectHTML, fmtTime } from './core.js';
 import { openEditor, openProfile, charCard, bindCards } from './chars.js';
 import { hearts } from './board.js';
+import { logbookHTML, bindLogbook } from './logbook.js';
 
-const TABS = { roster: '학생 명부', me: '내 캐릭터', mail: '메일', report: '통신부', rules: '교칙', map: '지도', notices: '알림' };
+const TABS = { roster: '학생 명부', me: '내 캐릭터', mail: '메일', report: '통신부', rules: '교칙', map: '지도', notices: '알림', log: '로그북' };
 
 export function render(el, name, args, what) {
   if (what && what.startsWith('trial')) return;
   const tab = TABS[args[0]] ? args[0] : 'roster';
-  const body = { roster, me, mail, report, rules, map, notices }[tab](args);
+  const body = { roster, me, mail, report, rules, map, notices, log: logbookHTML }[tab](args);
   render2(el, tab, body);
   bind(el, tab, args);
 }
@@ -169,7 +170,17 @@ function map() {
 
 function notices() {
   const list = store.state.notices.slice().reverse();
-  return `<h2>알림</h2><ul class="notice-list">${list.map((n) => `<li class="${n.kind || ''}"><span>${esc(n.text)}</span><small>${n.day}일째 · ${fmtTime(n.ts)}</small></li>`).join('') || '<p class="hint">알림이 없습니다.</p>'}</ul>`;
+  const seen = local.get(`dgr_seen_ping_${store.state.code}`, 0);
+  const only = local.get('dgr_notice_mine', false);
+  const shown = only ? list.filter((n) => n.toPlayers) : list;
+  setTimeout(() => {
+    markPingsSeen();
+    notify('top'); // 상단 학생수첩 배지 갱신
+  });
+  return `<div class="hb-section-head"><h2>알림</h2><label class="chk"><input type="checkbox" id="onlyMine" ${only ? 'checked' : ''}> 나에게 온 것만 (댓글 · 답글 · 멘션)</label></div>
+    <ul class="notice-list">${shown
+      .map((n) => `<li class="${n.kind || ''} ${n.toPlayers && n.ts > seen ? 'fresh' : ''} ${n.link ? 'has-link' : ''}" ${n.link ? `data-link="${esc(n.link)}"` : ''}><span>${esc(n.text)}</span><small>${n.day}일째 · ${fmtTime(n.ts)}</small></li>`)
+      .join('') || '<p class="hint">알림이 없습니다.</p>'}</ul>`;
 }
 
 function bind(el, tab, args) {
@@ -188,6 +199,10 @@ function bind(el, tab, args) {
   const reportChar = tab === 'report' ? $('.chip.active', el)?.getAttribute('href')?.split('/').pop() : null;
   $$('[data-gift-to]', el).forEach((b) => (b.onclick = () => pickGift(reportChar, b.dataset.giftTo)));
   $$('[data-mail]', el).forEach((li) => (li.onclick = () => openMail(li.dataset.mail)));
+  if (tab === 'log') bindLogbook(el, () => render(el, 'handbook', ['log']));
+  $$('[data-link]', el).forEach((li) => (li.onclick = () => (location.hash = li.dataset.link)));
+  const om = $('#onlyMine', el);
+  if (om) om.onchange = () => (local.set('dgr_notice_mine', om.checked), render(el, 'handbook', ['notices']));
   const ms = $('#mSend', el);
   if (ms)
     ms.onclick = async () => {

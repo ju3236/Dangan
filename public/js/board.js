@@ -1,6 +1,6 @@
 // 게시판 (일상/조사 파트): 네이버 카페 같은 글 + 댓글
 import {
-  $, $$, esc, emit, store, local, render as paint, toast, isGM, charById, myChars, students, playerById,
+  $, $$, esc, emit, store, local, mentionHTML, render as paint, toast, isGM, charById, myChars, students, playerById,
   avatar, spriteOf, charSelectHTML, fmtTime, speakAs, lastSprite,
 } from './core.js';
 
@@ -193,7 +193,7 @@ function postView(p) {
         </div>
       </div>
     </div>
-    <div class="post-body">${sprite ? `<img class="post-sprite" src="${esc(sprite.img)}" alt="">` : ''}${esc(p.body)}</div>
+    <div class="post-body">${sprite ? `<img class="post-sprite" src="${esc(sprite.img)}" alt="">` : ''}${mentionHTML(esc(p.body))}</div>
     <div class="comments">
       <h3>댓글 <b>${p.comments.length}</b></h3>
       ${top.map((c) => commentHTML(p, c) + replies(c.id).map((r) => commentHTML(p, r, true)).join('')).join('') || '<p class="hint">첫 댓글을 남겨 보세요.</p>'}
@@ -212,7 +212,7 @@ function commentHTML(p, c, reply = false) {
     <div class="c-main">
       <div class="c-who"><b style="color:${a.color}">${esc(a.name)}</b>${a.gm ? ' <b class="gm-badge">GM</b>' : a.c ? ` <small>${esc(a.sub)}</small>` : ' <small>OOC</small>'}
         ${p.authorId === c.authorId && p.charId === c.charId ? '<span class="writer-badge">작성자</span>' : ''}</div>
-      ${c.body ? `<div class="c-body">${esc(c.body)}</div>` : ''}
+      ${c.body ? `<div class="c-body">${mentionHTML(esc(c.body))}</div>` : ''}
       ${c.grants?.length ? `<div class="grants">${c.grants.map((g) => `<span class="grant ${g.type}">${g.type === 'bullet' ? '⚡' : g.type === 'coin' ? '🪙' : ''} ${esc(g.label)} → ${esc(g.charIds.map((id) => charById(id)?.name || '?').join(', '))}</span>`).join('')}</div>` : ''}
       <div class="c-meta">${fmtTime(c.ts)} <button data-reply="${c.id}">답글쓰기</button>${canDel ? `<button data-del-cmt="${c.id}">삭제</button>` : ''}</div>
     </div>
@@ -252,7 +252,7 @@ function commentForm(p) {
       ${charSelectHTML('cAs', cur, { none: gm ? 'GM (진행)' : `${store.state.me.nickname} (OOC)`, chars })}
       ${c?.sprites?.length ? `<select id="cSprite">${c.sprites.map((s) => `<option value="${s.id}" ${s.id === lastSprite(c.id) ? 'selected' : ''}>${esc(s.label)}</option>`).join('')}</select>` : ''}
     </div>
-    <textarea id="cBody" rows="3" placeholder="${gm ? '조사 결과나 진행 내용을 댓글로 남겨 주세요.' : '댓글을 남겨 보세요. (Ctrl+Enter 등록)'}"></textarea>
+    <textarea id="cBody" rows="3" placeholder="${gm ? '조사 결과나 진행 내용을 댓글로 남겨 주세요.' : '댓글을 남겨 보세요. @캐릭터이름 으로 부르면 그 플레이어에게 알림이 가요. (Ctrl+Enter 등록)'}"></textarea>
     ${grantHTML}
     <div class="row end"><button class="btn pink small">등록</button></div>
   </form>`;

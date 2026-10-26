@@ -5,6 +5,11 @@ import { renderCase, gmNav } from './casefile.js';
 import { soundAdminHTML, bindSoundAdmin } from './audio.js';
 
 let shopRows = null; // 편집 중인 매점 상품 id 목록 (null이면 서버 상태 그대로)
+let backups = null; // 자동 백업 목록 (열었을 때만 불러온다)
+const BACKUP_REASON = {
+  auto: '자동', manual: '직접', 'before-import': '불러오기 직전', 'before-restore': '되돌리기 직전',
+  'before-clear': '재판 로그 비우기 직전', 'before-case-delete': '사건 삭제 직전', 'before-char-delete': '캐릭터 삭제 직전',
+};
 
 export function render(el, name, args, what) {
   if (what && what.startsWith('trial')) return;
@@ -12,7 +17,7 @@ export function render(el, name, args, what) {
     el.innerHTML = '<p class="hint pad">GM만 볼 수 있는 화면입니다.</p>';
     return;
   }
-  if (args[0] === 'case') return renderCase(el);
+  if (args?.[0] === 'case') return renderCase(el);
   const s = store.state;
   const chars = s.characters;
   const checks = (prefix, checked = []) =>
@@ -130,10 +135,17 @@ export function render(el, name, args, what) {
       <p class="hint">GM은 여러 명일 수 있어요. 봉인된 사건은 GM끼리도 서로 보이지 않습니다.</p>
       ${s.players.map((p) => `<div class="row"><span class="dot ${p.online ? 'on' : ''}"></span>${esc(p.nickname)} ${p.isGM ? '<b class="gm-badge">GM</b>' : ''}
         <button class="btn tiny ghost" data-role="${p.id}" data-on="${p.isGM ? '' : '1'}">${p.isGM ? 'GM 해제' : 'GM 권한 주기'}</button></div>`).join('')}
-      <h3>백업</h3>
-      <p class="hint">무료 호스팅은 재시작 시 데이터가 사라질 수 있어요. 세션이 끝나면 백업해 두세요. (이미지 포함)</p>
-      <div class="row wrap"><button class="btn small" id="exportBtn">방 백업 (JSON)</button>
-        <label class="btn small">백업 불러오기<input type="file" id="importFile" accept=".json" hidden></label></div>
+      <h3>💾 자동 백업</h3>
+      <p class="hint">10분마다 바뀐 내용이 있으면 서버 컴퓨터의 <code>data/backups</code> 폴더에 자동으로 저장됩니다 (최근 30개 + 하루 1개씩 14일). 불러오기·로그 비우기·삭제 같은 작업 직전에도 저장돼요. 이미지는 포함, 음원은 제외.</p>
+      <div class="row wrap"><button class="btn small" id="bkLoad">${backups ? '목록 새로고침' : '백업 목록 보기'}</button><button class="btn small" id="bkNow">지금 백업</button></div>
+      ${backups ? `<div class="bk-list">${backups
+        .map((b) => `<div class="bk-row"><span>${new Date(b.savedAt).toLocaleString('ko-KR')}</span><small>${esc(BACKUP_REASON[b.reason] || b.reason)} · ${Math.ceil(b.size / 1024)}KB</small>
+          <span class="grow"></span><button class="btn tiny ghost" data-bk-get="${b.name}">받기</button><button class="btn tiny" data-bk-restore="${b.name}">되돌리기</button></div>`)
+        .join('') || '<p class="hint">아직 백업이 없습니다.</p>'}</div>` : ''}
+      <h3>파일로 옮기기</h3>
+      <p class="hint">다른 컴퓨터로 옮기거나 따로 보관할 때 쓰세요.</p>
+      <div class="row wrap"><button class="btn small" id="exportBtn">방 백업 파일 받기 (JSON)</button>
+        <label class="btn small">백업 파일 불러오기<input type="file" id="importFile" accept=".json" hidden></label></div>
     </section>
   </div>`
   );
@@ -303,6 +315,34 @@ function bind(el) {
     b.onclick = () => {
       const on = !!b.dataset.on;
       if (confirm(on ? '이 플레이어에게도 GM 권한을 줄까요?' : '이 플레이어의 GM 권한을 해제할까요?')) emit('gm:role', { playerId: b.dataset.role, on });
+    };
+  });
+  const loadBackups = async (ev = 'gm:backups') => {
+    const r = await emit(ev);
+    if (r) {
+      backups = r.list;
+      render(el);
+    }
+  };
+  on('bkLoad', () => loadBackups());
+  on('bkNow', async () => {
+    await loadBackups('gm:backupNow');
+    toast('백업했습니다.');
+  });
+  $$('[data-bk-get]', el).forEach((b) => {
+    b.onclick = async () => {
+      const r = await emit('gm:backupGet', { name: b.dataset.bkGet });
+      if (r?.data) download(`dangan-${store.state.code}-${b.dataset.bkGet}`, JSON.stringify(r.data), 'application/json');
+    };
+  });
+  $$('[data-bk-restore]', el).forEach((b) => {
+    b.onclick = async () => {
+      const when = new Date(Number(b.dataset.bkRestore.split('-')[0])).toLocaleString('ko-KR');
+      if (!confirm(`${when} 시점으로 방 전체를 되돌릴까요?\n(지금 상태도 백업해 두니 다시 돌아올 수 있어요)`)) return;
+      if (await emit('gm:backupRestore', { name: b.dataset.bkRestore })) {
+        toast('되돌렸습니다.');
+        loadBackups();
+      }
     };
   });
   on('exportBtn', async () => {

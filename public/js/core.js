@@ -165,14 +165,33 @@ export function render(el, html) {
 }
 
 // ---------- 토스트 / 모달 ----------
-export function toast(text, kind = 'info') {
+export function toast(text, kind = 'info', link = null) {
   const box = $('#toasts');
   const el = document.createElement('div');
-  el.className = 'toast ' + kind;
+  el.className = 'toast ' + kind + (link ? ' link' : '');
   el.textContent = text;
+  if (link) el.onclick = () => (location.hash = link);
   box.appendChild(el);
-  setTimeout(() => el.classList.add('out'), 3500);
-  setTimeout(() => el.remove(), 4000);
+  const ms = link ? 6500 : 3500;
+  setTimeout(() => el.classList.add('out'), ms);
+  setTimeout(() => el.remove(), ms + 500);
+}
+
+// '@캐릭터이름'을 강조 (이미 이스케이프된 HTML에 적용)
+export function mentionHTML(html) {
+  const names = (store.state?.characters || []).map((c) => c.name).filter(Boolean).sort((a, b) => b.length - a.length);
+  if (!names.length) return html;
+  const re = new RegExp('@(' + names.map((n) => esc(n).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')', 'g');
+  return html.replace(re, '<b class="mention">@$1</b>');
+}
+
+// 아직 안 본 '나에게 온 알림' (댓글·답글·멘션) 수
+export function unseenPings() {
+  const seen = local.get(`dgr_seen_ping_${store.state?.code}`, 0);
+  return (store.state?.notices || []).filter((n) => n.toPlayers && n.ts > seen).length;
+}
+export function markPingsSeen() {
+  local.set(`dgr_seen_ping_${store.state?.code}`, Date.now());
 }
 
 export function modal(html, { wide = false, onClose } = {}) {
@@ -225,7 +244,9 @@ export async function uploadImage(file, maxW = 900, maxH = 900) {
 export function download(name, text, type = 'text/plain') {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([text], { type }));
-  a.download = name;
+  a.download = name.replace(/[\\/:*?"<>|]/g, '_'); // 윈도우에서 못 쓰는 글자 정리
+  document.body.appendChild(a);
   a.click();
+  a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }

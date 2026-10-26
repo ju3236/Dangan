@@ -731,3 +731,36 @@ textarea.masked::selection { color: transparent; background: rgba(166, 107, 255,
 .snd-label { min-width: 130px; }
 .loc-cell.locked { opacity: .55; border-left: 3px solid var(--red); }
 .time-btns { background: var(--panel2); padding: 8px; }
+.bk-list { max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; }
+.bk-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.bk-row small { color: var(--muted); }
+.toast.link { cursor: pointer; }
+.toast.link::after { content: '  ›'; color: var(--pink); }
+.toast.ping { border-left-color: #2ad4c8; }
+.mention { color: #1b85c4; background: #e8f5ff; padding: 0 3px; border-radius: 3px; }
+.notice-list li.has-link { cursor: pointer; }
+.notice-list li.has-link:hover { background: #193340; }
+.notice-list li.ping { border-color: #2ad4c8; }
+.notice-list li.fresh span::before { content: 'N '; color: var(--red); font-weight: 900; }
+
+/* ---------- 로그북 ---------- */
+.lb-tools { margin-bottom: 12px; }
+.logbook { background: #fbf8f2; color: #222; padding: 24px 28px; line-height: 1.8; max-height: 70vh; overflow-y: auto; }
+.logbook .hint { color: #777; }
+.lb-title { text-align: center; border-bottom: 3px double #222; padding-bottom: 10px; color: #222; }
+.logbook .lb-day { margin-top: 28px; color: #c21e63; border-left: 5px solid #c21e63; padding-left: 10px; }
+.lb-post { margin: 14px 0; padding: 12px 16px; background: #fff; border: 1px solid #e6e1ea; }
+.lb-post h4 { margin: 2px 0; color: #222; }
+.lb-meta, .lb-author { font-size: 13px; color: #777; }
+.lb-body { margin: 8px 0; }
+.lb-cmt { font-size: 14px; border-top: 1px dashed #ddd; padding: 5px 0; }
+.lb-cmt.reply { padding-left: 22px; }
+.lb-cmt i { color: #8a5d00; }
+.lb-trial { margin: 14px 0; padding: 12px 16px; background: #fff; border-left: 5px solid #222; }
+.lb-trial p { margin: 3px 0; }
+.lb-narr { font-style: italic; color: #555; text-align: center; }
+.lb-mk { background: #111; color: #fff; padding: 5px 10px; }
+.lb-shoot { color: #b85a00; font-weight: 700; }
+.lb-point { color: #c21e63; font-weight: 700; }
+.lb-phase { text-align: center; color: #c21e63; }
+.lb-ooc, .lb-sys { color: #999; font-size: 13px; }

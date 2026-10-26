@@ -1,5 +1,5 @@
 // 진입점: 로비, 로그인 유지, 라우팅, 상단바, 연출
-import { $, $$, esc, socket, store, emit, local, toast, PHASES } from './core.js';
+import { $, $$, esc, socket, store, emit, local, toast, PHASES, unseenPings, onChange } from './core.js';
 import * as board from './board.js';
 import * as trial from './trial.js';
 import * as handbook from './handbook.js';
@@ -164,7 +164,8 @@ socket.on('trial:update', (m) => {
 });
 socket.on('notice', (n) => {
   if (n.kind === 'mail') se('mail');
-  if (n.kind !== 'phase') toast(n.text, n.kind || 'info');
+  if (n.kind !== 'phase') toast(n.text, n.kind || 'info', n.link);
+  if (n.toPlayers) renderTop();
 });
 socket.on('splash', showSplash);
 socket.on('audio:changed', async () => {
@@ -174,6 +175,8 @@ socket.on('audio:changed', async () => {
 refreshAudio().then(() => rerender('state')); // 슬롯 목록이 도착하면 GM 사운드 화면을 다시 그린다
 socket.on('climax:play', playClimax);
 socket.on('execution:play', playExecution);
+
+onChange((what) => what === 'top' && store.state && renderTop());
 
 function renderTop() {
   const s = store.state;
@@ -190,7 +193,7 @@ function renderTop() {
   }
   $('#tUser').innerHTML = `${esc(s.me.nickname)}${s.me.isGM ? ' <b class="gm-badge">GM</b>' : ''}`;
   $$('.gm-only').forEach((el) => el.classList.toggle('hidden', !s.me.isGM));
-  const n = unreadCount();
+  const n = unreadCount() + unseenPings();
   $('[data-nav=handbook]').innerHTML = `📱 학생수첩${n ? ` <i class="nav-badge">${n}</i>` : ''}`;
   document.title = `${s.title} — ${PHASES[s.phase]}`;
   document.body.dataset.phase = s.phase;
