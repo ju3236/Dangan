@@ -1,11 +1,13 @@
 // 전체 화면 연출: 클라이맥스 추리 재생, 오시오키
 import { esc, charById, spriteOf } from './core.js';
+import { overrideBGM, se } from './audio.js';
 
 let current = null;
 
 // frames: [{ html, cls, ms }] 를 차례로 보여준다. 클릭하면 다음, Esc면 닫기
-function play(frames, theme) {
+function play(frames, theme, bgm) {
   stop();
+  overrideBGM(bgm);
   const el = document.createElement('div');
   el.className = `cinema ${theme}`;
   el.innerHTML = '<div class="cinema-frame"></div><div class="cinema-hint">클릭: 다음 · Esc: 건너뛰기</div>';
@@ -32,6 +34,7 @@ function play(frames, theme) {
 }
 
 function stop() {
+  if (current) overrideBGM(null);
   current?.stop();
   current = null;
 }
@@ -46,7 +49,7 @@ export function playClimax({ panels }) {
     })),
     { cls: 'title end', html: '<b>이게 사건의 전말이다!</b><small>COMPLETE!!</small>', ms: 3200 },
   ];
-  play(frames, 'climax');
+  play(frames, 'climax', 'climax');
 }
 
 export function playExecution({ charId, title, scenes }) {
@@ -59,5 +62,6 @@ export function playExecution({ charId, title, scenes }) {
     ...scenes.map((t, i) => ({ cls: `exec-scene s${i % 3}`, html: `${portrait}<p>${esc(t)}</p>`, ms: Math.max(3800, t.length * 95) })),
     { cls: 'exec-end', html: '<b>THE END</b><span>🐻 우푸푸푸푸…!</span>', ms: 3200 },
   ];
-  play(frames, 'execution');
+  se('gameover');
+  play(frames, 'execution', 'execution');
 }

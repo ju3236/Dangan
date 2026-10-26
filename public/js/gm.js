@@ -1,7 +1,8 @@
 // GM 관리 화면
-import { $, $$, esc, emit, store, render as paint, toast, isGM, charById, avatar, uploadImage, download, PHASES } from './core.js';
+import { $, $$, esc, emit, store, render as paint, toast, modal, isGM, charById, avatar, uploadImage, download, PHASES } from './core.js';
 import { openEditor, openProfile } from './chars.js';
 import { renderCase, gmNav } from './casefile.js';
+import { soundAdminHTML, bindSoundAdmin } from './audio.js';
 
 let shopRows = null; // 편집 중인 매점 상품 id 목록 (null이면 서버 상태 그대로)
 
@@ -24,6 +25,11 @@ export function render(el, name, args, what) {
     `${gmNav('main')}<div class="gm">
     <section class="gm-card"><h2>진행</h2>
       <div class="phase-btns">${Object.entries(PHASES).map(([k, l]) => `<button class="btn ${s.phase === k ? 'pink' : ''}" data-phase="${k}">${l}</button>`).join('')}</div>
+      <div class="row wrap time-btns"><span>지금: <b>${{ morning: '☀️ 아침', day: '🌤 낮', night: '🌙 야간' }[s.timeOfDay]}</b></span>
+        <button class="btn small" data-time="morning" data-next="1">☀️ 아침 방송 (다음 날)</button>
+        <button class="btn small" data-time="day">🌤 낮</button>
+        <button class="btn small" data-time="night">🌙 야간 방송</button>
+        <button class="btn small pink" id="motiveBtn">📼 동기 발표</button></div>
       <div class="row wrap"><button class="btn small" data-day="-1">◀ 전날</button><b>${s.day}일째</b><button class="btn small" data-day="1">다음 날 ▶</button>
         <button class="btn small" id="skillReset">스킬 횟수 초기화</button></div>
       <h3>시체 발견</h3>
@@ -79,6 +85,7 @@ export function render(el, name, args, what) {
         ${[['ticketsPerDay', '하루 티켓'], ['eventPoints', '자유시간 1회'], ['giftPoints', '선물'], ['likedPoints', '좋아하는 선물'], ['dislikedPoints', '싫어하는 선물'], ['levelPoints', '레벨당 점수'], ['maxLevel', '최대 레벨']]
           .map(([k, l]) => `<label>${l}<input type="number" id="ft-${k}" value="${s.freeTime[k]}" class="num"></label>`)
           .join('')}
+        <label class="chk"><input type="checkbox" id="ft-bondReward" ${s.freeTime.bondReward ? 'checked' : ''}> 최대 레벨 보상 (유대 스킬 + 메일)</label>
         <button class="btn small pink" id="ftSave">설정 저장</button>
       </div>
       <div class="row wrap"><b>티켓</b>${students().map((c) => `<span class="ticket-chip">${esc(c.name)} <b>${c.tickets}</b><button data-tk="${c.id}:1">+</button><button data-tk="${c.id}:-1">−</button></span>`).join('')}
@@ -111,10 +118,13 @@ export function render(el, name, args, what) {
       <label>방 제목<input id="setTitle" value="${esc(s.title)}" maxlength="60"></label>
       <label>장소 (한 줄에 하나)<textarea id="setLocs" rows="5">${esc(s.locations.join('\n'))}</textarea></label>
       <label>교칙 (한 줄에 하나)<textarea id="setRules" rows="6">${esc(s.rules.join('\n'))}</textarea></label>
+      <label>🌙 야간 출입 금지 장소 (한 줄에 하나 — 야간 방송 뒤에는 이 장소로 글을 쓸 수 없어요)<textarea id="setNight" rows="3">${esc(s.nightClosed.join('\n'))}</textarea></label>
       <div class="row wrap"><button class="btn small pink" id="saveSettings">설정 저장</button>
         <label class="btn small">지도 이미지 업로드<input type="file" id="mapFile" accept="image/*" hidden></label>
         ${s.mapImage ? '<button class="btn small ghost" id="mapClear">지도 삭제</button>' : ''}</div>
     </section>
+
+    <section class="gm-card"><h2>🎵 사운드</h2>${soundAdminHTML()}</section>
 
     <section class="gm-card"><h2>플레이어</h2>
       <p class="hint">GM은 여러 명일 수 있어요. 봉인된 사건은 GM끼리도 서로 보이지 않습니다.</p>
@@ -153,7 +163,23 @@ function affinityMatrix() {
   </tbody></table></div>`;
 }
 
+// 동기 발표: 모두에게 보내는 방송 + 캐릭터별 비밀 동기
+function openMotive() {
+  const chars = store.state.characters.filter((c) => !c.npc && c.alive);
+  const d = modal(`<h2>📼 동기 발표</h2>
+    <p class="hint">모두에게 방송할 내용과, 캐릭터마다 학생수첩 메일로 보낼 「동기」를 적어 주세요. 비워 둔 캐릭터에게는 메일이 가지 않아요.</p>
+    <label>방송 내용<textarea id="mvText" rows="2" placeholder="예: 여러분에게 특별한 선물을 준비했어요~ 학생수첩을 확인해 주세요! 우푸푸!"></textarea></label>
+    ${chars.map((c) => `<label style="color:${c.color}">${esc(c.name)}에게<textarea data-mv="${c.id}" rows="2" placeholder="예: 당신의 가족이 위험에 처한 영상이 도착했다…"></textarea></label>`).join('')}
+    <div class="row end"><button class="btn small pink" id="mvSend">발표</button></div>`, { wide: true });
+  $('#mvSend', d).onclick = async () => {
+    const perChar = {};
+    $$('[data-mv]', d).forEach((t) => (perChar[t.dataset.mv] = t.value));
+    if (await emit('gm:motive', { text: $('#mvText', d).value, perChar })) d.close();
+  };
+}
+
 function bind(el) {
+  bindSoundAdmin(el);
   const on = (id, fn) => {
     const b = $('#' + id, el);
     if (b) b.onclick = fn;
@@ -162,6 +188,13 @@ function bind(el) {
 
   $$('[data-phase]', el).forEach((b) => (b.onclick = () => emit('gm:phase', { phase: b.dataset.phase })));
   $$('[data-day]', el).forEach((b) => (b.onclick = () => emit('gm:day', { delta: +b.dataset.day })));
+  $$('[data-time]', el).forEach((b) => {
+    b.onclick = () => {
+      const text = prompt('방송 내용 (비우면 기본 문구)', '');
+      if (text !== null) emit('gm:time', { time: b.dataset.time, text, nextDay: !!b.dataset.next });
+    };
+  });
+  on('motiveBtn', openMotive);
   on('skillReset', () => confirm('모든 캐릭터의 스킬 사용 횟수를 초기화할까요?') && emit('skill:reset'));
   on('bodyBtn', async () => {
     if (!confirm('시체 발견 방송을 할까요? (조사 파트로 전환)')) return;
@@ -207,6 +240,7 @@ function bind(el) {
   on('ftSave', async () => {
     const data = {};
     ['ticketsPerDay', 'eventPoints', 'giftPoints', 'likedPoints', 'dislikedPoints', 'levelPoints', 'maxLevel'].forEach((k) => (data[k] = $('#ft-' + k).value));
+    data.bondReward = $('#ft-bondReward').checked;
     if (await emit('gm:freetime', data)) toast('자유시간 설정을 저장했습니다.');
   });
   on('ftRefill', () => emit('gm:tickets', { refill: true }));
@@ -255,7 +289,7 @@ function bind(el) {
 
   on('saveSettings', async () => {
     const lines = (id) => $(id).value.split(/\n/).map((x) => x.trim()).filter(Boolean);
-    if (await emit('gm:settings', { title: $('#setTitle').value, locations: lines('#setLocs'), rules: lines('#setRules') })) toast('설정을 저장했습니다.');
+    if (await emit('gm:settings', { title: $('#setTitle').value, locations: lines('#setLocs'), rules: lines('#setRules'), nightClosed: lines('#setNight') })) toast('설정을 저장했습니다.');
   });
   const mf = $('#mapFile', el);
   if (mf)

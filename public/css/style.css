@@ -721,3 +721,13 @@ textarea.masked::selection { color: transparent; background: rgba(166, 107, 255,
 .cinema-frame.exec-end b { display: block; font: 400 clamp(56px, 12vw, 130px) 'Black Han Sans'; color: #fff; text-shadow: 6px 6px 0 var(--red); }
 .cinema-frame.exec-end span { color: #ddd; font-size: 20px; }
 @media (max-width: 760px) { .climax-board { inset: 6px 6px 110px; } .cx-slots { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---------- 사운드 ---------- */
+.sound-pop { position: fixed; top: 54px; right: 16px; z-index: 120; background: var(--panel); border: 2px solid var(--pink); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; width: 220px; box-shadow: 0 6px 20px rgba(0, 0, 0, .6); }
+.sound-pop input[type=range] { accent-color: var(--pink); padding: 0; }
+.snd-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.snd-row code { color: var(--muted); font-size: 11px; }
+.snd-row.on .snd-label { color: var(--yellow); }
+.snd-label { min-width: 130px; }
+.loc-cell.locked { opacity: .55; border-left: 3px solid var(--red); }
+.time-btns { background: var(--panel2); padding: 8px; }

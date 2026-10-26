@@ -287,7 +287,12 @@ function writeView(p, boardArg) {
   <form class="write" id="wForm">
     <div class="row">
       <select id="wBoard" ${p ? 'disabled' : ''}>${boards.map(([k, l]) => `<option value="${k}" ${k === board ? 'selected' : ''}>${l}</option>`).join('')}</select>
-      <select id="wLoc"><option value="">장소 선택 (선택)</option>${s.locations.map((l) => `<option ${l === p?.location ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
+      <select id="wLoc"><option value="">장소 선택 (선택)</option>${s.locations
+        .map((l) => {
+          const locked = !gm && s.timeOfDay === 'night' && s.nightClosed.includes(l);
+          return `<option value="${esc(l)}" ${l === p?.location ? 'selected' : ''} ${locked ? 'disabled' : ''}>${esc(l)}${locked ? ' 🔒 야간 출입 금지' : ''}</option>`;
+        })
+        .join('')}</select>
     </div>
     ${p ? '' : `<div class="row">
       <label class="lbl">작성 캐릭터</label>${ft ? charSelectHTML('wAs', charId, { chars: ftChars }) : charSelectHTML('wAs', charId, { none: gm ? 'GM / 모노쿠마 이름 없이' : `${s.me.nickname} (OOC)` })}

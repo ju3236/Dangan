@@ -7,6 +7,7 @@ import { unreadCount } from './handbook.js';
 import * as shop from './shop.js';
 import * as gm from './gm.js';
 import { playClimax, playExecution } from './cinema.js';
+import { refreshAudio, setBGM, se, SPLASH_SE, soundButton, bindSoundButton } from './audio.js';
 
 const views = { board, trial, handbook, shop, gm };
 
@@ -50,6 +51,7 @@ function entered({ code, session }) {
 }
 
 function showLobby() {
+  setBGM('lobby');
   $('#app').classList.add('hidden');
   $('#lobby').classList.remove('hidden');
 }
@@ -107,6 +109,21 @@ function route() {
   }
   $$('.mainnav a').forEach((a) => a.classList.toggle('active', a.dataset.nav === (views[view] ? view : 'board')));
   v.render(el, name, args, 'route');
+  updateBGM();
+}
+
+// 지금 화면과 진행 상황에 맞는 BGM
+function updateBGM() {
+  const s = store.state;
+  if (!s) return setBGM('lobby');
+  const inTrial = location.hash.startsWith('#/trial');
+  if (s.phase === 'execution') return setBGM('execution');
+  if (inTrial || s.phase === 'trial') {
+    if (s.trial.showdown) return setBGM('debate');
+    if (s.trial.climax && !s.trial.climax.solved) return setBGM('climax');
+    return setBGM('trial');
+  }
+  setBGM(s.phase === 'investigation' ? 'investigation' : 'daily');
 }
 window.addEventListener('hashchange', route);
 
@@ -121,6 +138,7 @@ socket.on('state', (s) => {
   const first = !store.state;
   store.state = s;
   renderTop();
+  updateBGM();
   if (first) route();
   else rerender('state');
   // 파트가 바뀌면 해당 화면으로 이동
@@ -145,9 +163,15 @@ socket.on('trial:update', (m) => {
   rerender('trial:update', m);
 });
 socket.on('notice', (n) => {
+  if (n.kind === 'mail') se('mail');
   if (n.kind !== 'phase') toast(n.text, n.kind || 'info');
 });
 socket.on('splash', showSplash);
+socket.on('audio:changed', async () => {
+  await refreshAudio();
+  rerender('state');
+});
+refreshAudio().then(() => rerender('state')); // 슬롯 목록이 도착하면 GM 사운드 화면을 다시 그린다
 socket.on('climax:play', playClimax);
 socket.on('execution:play', playExecution);
 
@@ -155,10 +179,15 @@ function renderTop() {
   const s = store.state;
   $('#tTitle').textContent = s.title;
   $('#tCode').textContent = s.code;
-  $('#tDay').textContent = `${s.day}일째`;
+  $('#tDay').textContent = `${s.day}일째 ${{ morning: '☀️', day: '🌤', night: '🌙' }[s.timeOfDay] || ''}`;
+  $('#tDay').title = { morning: '아침', day: '낮', night: '야간' }[s.timeOfDay] || '';
   const pb = $('#tPhase');
   pb.textContent = PHASES[s.phase];
   pb.className = 'phase-badge ' + s.phase;
+  if (!$('#soundBtn')) {
+    $('#tSound').innerHTML = soundButton();
+    bindSoundButton();
+  }
   $('#tUser').innerHTML = `${esc(s.me.nickname)}${s.me.isGM ? ' <b class="gm-badge">GM</b>' : ''}`;
   $$('.gm-only').forEach((el) => el.classList.toggle('hidden', !s.me.isGM));
   const n = unreadCount();
@@ -194,6 +223,7 @@ function showSplash({ kind, name, color, skill, text, level, max }) {
     fragment: `<small>${esc(name)}</small>희망의 조각<small>친밀도 Lv.${esc(level)} / ${esc(max)}</small>`,
   };
   if (!words[kind]) return;
+  se(SPLASH_SE[kind]);
   const el = $('#splash');
   el.className = 'splash ' + kind;
   el.innerHTML = `<div class="word" ${color ? `style="--sc:${esc(color)}"` : ''}>${words[kind]}</div>`;

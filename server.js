@@ -18,7 +18,8 @@ const MAX_NOTICES = 300;
 const MAX_IMAGES = 600;
 const PHASES = { daily: '일상 파트', investigation: '조사 파트', trial: '학급재판', execution: '처형' };
 const BOARDS = ['notice', 'daily', 'investigation', 'freetime', 'free'];
-const FREE_TIME_DEFAULTS = { ticketsPerDay: 2, eventPoints: 3, levelPoints: 5, maxLevel: 5, giftPoints: 1, likedPoints: 3, dislikedPoints: -2 };
+const FREE_TIME_DEFAULTS = { ticketsPerDay: 2, eventPoints: 3, levelPoints: 5, maxLevel: 5, giftPoints: 1, likedPoints: 3, dislikedPoints: -2, bondReward: true };
+const TIMES = { morning: '아침', day: '낮', night: '야간' };
 const DEFAULT_LOCATIONS = ['교실', '식당', '주방', '체육관', '도서실', '기숙사', '정원', '수영장', '창고', '매점'];
 const DEFAULT_RULES = [
   '학생 여러분은 학원 안에서만 공동생활을 해야 합니다. 공동생활의 기한은 없습니다.',
@@ -74,6 +75,89 @@ app.get('/img/:code/:id', (req, res) => {
   res.type(m[1]).send(Buffer.from(m[2], 'base64'));
 });
 
+// ---------- 사운드 ----------
+// 음원은 직접 넣는다: GM 화면에서 올리거나 data/audio 폴더에 '<슬롯>.mp3' 같은 이름으로 넣으면 된다
+// (git과 방 백업에는 포함되지 않는다)
+const AUDIO_DIR = process.env.AUDIO_DIR || path.join(path.dirname(DATA_FILE), 'audio');
+const AUDIO_SLOTS = [
+  ['lobby', 'bgm', '로비 · 타이틀'],
+  ['daily', 'bgm', '일상 파트'],
+  ['investigation', 'bgm', '조사 파트'],
+  ['trial', 'bgm', '학급재판'],
+  ['debate', 'bgm', '반론 쇼다운'],
+  ['climax', 'bgm', '클라이맥스 추리'],
+  ['execution', 'bgm', '오시오키'],
+  ['refute', 'se', '그건 틀렸어!'],
+  ['agree', 'se', '동의한다!'],
+  ['break', 'se', 'BREAK!!'],
+  ['miss', 'se', '튕겨났다…'],
+  ['body', 'se', '시체 발견'],
+  ['announce', 'se', '모노쿠마 방송 차임'],
+  ['vote', 'se', '투표 타임'],
+  ['correct', 'se', '투표 정답'],
+  ['wrong', 'se', '투표 오답'],
+  ['showdown', 'se', '반론하겠어!'],
+  ['cut', 'se', '베어 주겠어!'],
+  ['skill', 'se', '스킬 발동'],
+  ['fragment', 'se', '희망의 조각'],
+  ['mail', 'se', '메일 도착'],
+  ['gameover', 'se', 'GAME OVER'],
+].map(([id, kind, label]) => ({ id, kind, label }));
+const AUDIO_TYPES = { 'audio/mpeg': 'mp3', 'audio/mp3': 'mp3', 'audio/ogg': 'ogg', 'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/aac': 'aac', 'audio/webm': 'webm', 'audio/flac': 'flac' };
+const AUDIO_EXT_TYPE = { mp3: 'audio/mpeg', ogg: 'audio/ogg', wav: 'audio/wav', m4a: 'audio/mp4', aac: 'audio/aac', webm: 'audio/webm', flac: 'audio/flac' };
+
+function audioFile(slot) {
+  try {
+    const f = fs.readdirSync(AUDIO_DIR).find((n) => n.replace(/\.[^.]+$/, '') === slot && AUDIO_EXT_TYPE[n.split('.').pop().toLowerCase()]);
+    return f ? path.join(AUDIO_DIR, f) : null;
+  } catch {
+    return null;
+  }
+}
+
+app.get('/audio/list', (req, res) => {
+  res.json(
+    AUDIO_SLOTS.map((s) => {
+      const f = audioFile(s.id);
+      return { ...s, version: f ? Math.floor(fs.statSync(f).mtimeMs) : null };
+    })
+  );
+});
+
+app.get('/audio/file/:slot', (req, res) => {
+  const f = AUDIO_SLOTS.some((s) => s.id === req.params.slot) && audioFile(req.params.slot);
+  if (!f) return res.sendStatus(404);
+  res.type(AUDIO_EXT_TYPE[f.split('.').pop().toLowerCase()]).sendFile(f);
+});
+
+// GM만 올리고 지울 수 있다 (방 코드 + 세션으로 확인)
+function audioAuth(req) {
+  const r = rooms[String(req.get('x-room') || '')];
+  const pid = r && r.sessions[String(req.get('x-session') || '')];
+  return !!pid && r.gmIds.includes(pid);
+}
+
+app.post('/audio/file/:slot', express.raw({ type: () => true, limit: '60mb' }), (req, res) => {
+  const slot = AUDIO_SLOTS.find((s) => s.id === req.params.slot);
+  if (!slot || !audioAuth(req)) return res.status(403).json({ error: '권한이 없습니다.' });
+  const ext = AUDIO_TYPES[String(req.get('content-type') || '').split(';')[0].toLowerCase()];
+  if (!ext || !req.body?.length) return res.status(400).json({ error: 'mp3, ogg, wav, m4a 같은 음원 파일만 올릴 수 있어요.' });
+  fs.mkdirSync(AUDIO_DIR, { recursive: true });
+  const old = audioFile(slot.id);
+  if (old) fs.unlinkSync(old);
+  fs.writeFileSync(path.join(AUDIO_DIR, `${slot.id}.${ext}`), req.body);
+  io.emit('audio:changed');
+  res.json({ ok: true });
+});
+
+app.delete('/audio/file/:slot', (req, res) => {
+  if (!audioAuth(req)) return res.status(403).json({ error: '권한이 없습니다.' });
+  const f = AUDIO_SLOTS.some((s) => s.id === req.params.slot) && audioFile(req.params.slot);
+  if (f) fs.unlinkSync(f);
+  io.emit('audio:changed');
+  res.json({ ok: true });
+});
+
 // ---------- 유틸 ----------
 const uid = () => crypto.randomBytes(6).toString('hex');
 const str = (v, max = 500) => (typeof v === 'string' ? v.slice(0, max) : '');
@@ -119,6 +203,8 @@ function createRoom(code, title) {
     },
     trial: { messages: [], voting: false, revealed: false, votes: {}, climax: null, showdown: null },
     freeTime: { ...FREE_TIME_DEFAULTS },
+    timeOfDay: 'day',
+    nightClosed: [],
     affinity: {},
     cases: [],
     mails: [],
@@ -130,6 +216,8 @@ function migrate(room) {
   if (!Array.isArray(room.gmIds)) room.gmIds = room.gmId ? [room.gmId] : [];
   delete room.gmId;
   room.freeTime = { ...FREE_TIME_DEFAULTS, ...(room.freeTime || {}) };
+  room.timeOfDay = room.timeOfDay || 'day';
+  room.nightClosed = room.nightClosed || [];
   room.affinity = room.affinity || {};
   room.cases = room.cases || [];
   room.cases.forEach((c) => (c.generating = false));
@@ -228,6 +316,8 @@ function publicState(room, pid) {
     title: room.title,
     day: room.day,
     phase: room.phase,
+    timeOfDay: room.timeOfDay,
+    nightClosed: room.nightClosed,
     locations: room.locations,
     mapImage: room.mapImage,
     rules: room.rules,
@@ -363,9 +453,27 @@ function addAffinity(room, aId, bId, delta, { event = false } = {}) {
   if (after > before) {
     notice(room, `💗 ${a.name} 와(과) ${b.name} 의 친밀도가 Lv.${after} 이(가) 되었다! 희망의 조각을 손에 넣었다!`, [a.id, b.id], { kind: 'affinity' });
     eachSocket(room, (s, pid) => canSeeChars(room, pid, [a.id, b.id]) && s.emit('splash', { kind: 'fragment', name: `${a.name} ♥ ${b.name}`, level: after, max: room.freeTime.maxLevel }));
+    if (after >= room.freeTime.maxLevel && !rec.bonded && room.freeTime.bondReward) {
+      rec.bonded = true;
+      bondReward(room, a, b);
+      bondReward(room, b, a);
+    }
   } else if (after < before) {
     notice(room, `💔 ${a.name} 와(과) ${b.name} 의 친밀도가 Lv.${after} (으)로 내려갔다…`, [a.id, b.id], { kind: 'affinity' });
   }
+}
+
+// 친밀도 최대: 서로에게 「유대」 스킬과 특별 메일
+function bondReward(room, c, partner) {
+  if (!c.skills.some((s) => s.bondWith === partner.id)) {
+    c.skills.push({
+      id: uid(), bondWith: partner.id, name: `유대 — ${partner.name}`, maxUses: 1, used: 0,
+      desc: `${partner.name}와(과)의 유대. 학급재판에서 한 번, 막혔을 때 ${partner.name}에게 도움을 청할 수 있다 (GM에게 힌트 하나를 받거나, ${partner.name}에게 발언 차례를 넘긴다).`,
+    });
+  }
+  sendMail(room, c.id, `💗 ${partner.name}와(과)의 유대의 증표`,
+    `우푸푸… 축하해요! ${c.name} 와(과) ${partner.name} 의 유대가 최고에 이르렀습니다.\n\n두 사람만의 특별한 기억을 학생수첩에 새겨 두었어요. 학급재판에서 쓸 수 있는 스킬 「유대 — ${partner.name}」이(가) 해금되었습니다!\n\n…그 유대가 절망으로 바뀌지 않기를 빌게요~ 우푸푸푸!`,
+    { kind: 'bond', from: '모노쿠마' });
 }
 
 // 선물 반응: 받는 캐릭터의 좋아하는 것/싫어하는 것 키워드와 아이템 이름 비교
@@ -396,6 +504,7 @@ function sanitizeSkills(list, old = []) {
         desc: str(s?.desc, 500),
         maxUses: int(s?.maxUses, 1, 0, 99),
         used: prev ? prev.used : 0,
+        ...(prev?.bondWith ? { bondWith: prev.bondWith } : {}), // 친밀도 보상 스킬 표시 유지
       };
     })
     .filter((s) => s.name);
@@ -406,6 +515,7 @@ io.on('connection', (socket) => {
   let room = null;
   let pid = null;
   const isGM = () => !!room && isGMOf(room, pid);
+  const nightLocked = (loc) => !isGM() && room.timeOfDay === 'night' && !!loc && room.nightClosed.includes(loc);
   const me = () => room?.players[pid];
   const ownChar = (id) => {
     const c = room?.characters[id];
@@ -603,6 +713,7 @@ io.on('connection', (socket) => {
     const board = BOARDS.includes(d.board) ? d.board : 'daily';
     if (board === 'notice' && !isGM()) return reply({ error: '공지는 GM만 쓸 수 있습니다.' });
     if (board === 'freetime') return reply({ error: '자유시간은 「자유시간 보내기」로 시작해 주세요.' });
+    if (nightLocked(d.location)) return reply({ error: `야간에는 「${d.location}」에 출입할 수 없습니다. (교칙)` });
     const title = str(d.title, 100).trim();
     const body = str(d.body, 20000);
     if (!title) return reply({ error: '제목을 입력하세요.' });
@@ -873,6 +984,7 @@ io.on('connection', (socket) => {
       ft.giftPoints = int(d.giftPoints, ft.giftPoints, -50, 50);
       ft.likedPoints = int(d.likedPoints, ft.likedPoints, -50, 50);
       ft.dislikedPoints = int(d.dislikedPoints, ft.dislikedPoints, -50, 50);
+      if (typeof d.bondReward === 'boolean') ft.bondReward = d.bondReward;
       broadcast(room);
     },
     { gm: true }
@@ -1577,7 +1689,51 @@ io.on('connection', (socket) => {
       if (typeof d.title === 'string') room.title = str(d.title, 60).trim() || room.title;
       if (Array.isArray(d.locations)) room.locations = arr(d.locations, 60).map((l) => str(l, 40).trim()).filter(Boolean);
       if (Array.isArray(d.rules)) room.rules = arr(d.rules, 60).map((l) => str(l, 500).trim()).filter(Boolean);
+      if (Array.isArray(d.nightClosed)) room.nightClosed = arr(d.nightClosed, 60).map((l) => str(l, 40).trim()).filter(Boolean);
       if (typeof d.mapImage === 'string') room.mapImage = imgRef(room, d.mapImage);
+      broadcast(room);
+    },
+    { gm: true }
+  );
+
+  // 아침/낮/야간: 아침 방송은 다음 날로 넘기면서 티켓 충전
+  const TIME_TEXT = {
+    morning: '오전 7시가 되었습니다! 기상 시간이에요~ 오늘도 힘차게, 절망적인 하루를 보내 볼까요?',
+    day: '자, 자유 시간입니다~ 마음껏 교류해 주세요!',
+    night: '오후 10시가 되었습니다. 곧 출입 금지 구역의 문이 잠깁니다. 그럼 좋은 꿈 꾸세요~ 잘 자요!',
+  };
+  on(
+    'gm:time',
+    ({ time, text, nextDay }) => {
+      if (!TIMES[time]) return;
+      if (time === 'morning' && nextDay) {
+        room.day += 1;
+        Object.values(room.characters).forEach((c) => (c.tickets = room.freeTime.ticketsPerDay));
+      }
+      room.timeOfDay = time;
+      const msg = str(text, 1000).trim() || TIME_TEXT[time];
+      notice(room, `── ${room.day}일째 · ${TIMES[time]} ── 📺 모노쿠마: ${msg}`, [], { kind: 'announce' });
+      if (time === 'night' && room.nightClosed.length) notice(room, `🔒 야간 출입 금지: ${room.nightClosed.join(', ')}`, [], { kind: 'announce' });
+      splash(room, { kind: 'announce', text: msg });
+      broadcast(room);
+    },
+    { gm: true }
+  );
+
+  // 동기 발표: 모두에게 방송 + 캐릭터별 비밀 메일
+  on(
+    'gm:motive',
+    ({ text, perChar }, reply) => {
+      text = str(text, 2000).trim();
+      const mails = Object.entries(perChar && typeof perChar === 'object' ? perChar : {})
+        .map(([id, body]) => [id, str(body, 5000).trim()])
+        .filter(([id, body]) => room.characters[id] && body);
+      if (!text && !mails.length) return reply({ error: '방송 내용이나 캐릭터별 동기를 적어 주세요.' });
+      if (text) {
+        notice(room, `📼 동기 발표 — 모노쿠마: ${text}`, [], { kind: 'announce' });
+        splash(room, { kind: 'announce', text });
+      }
+      mails.forEach(([id, body]) => sendMail(room, id, '📼 당신에게 주는 「동기」', body, { kind: 'motive' }));
       broadcast(room);
     },
     { gm: true }

@@ -158,7 +158,13 @@ function map() {
   s.posts.forEach((p) => p.location && (counts[p.location] = (counts[p.location] || 0) + 1));
   return `<h2>학원 지도</h2>
     ${s.mapImage ? `<img class="map-img" src="${esc(s.mapImage)}" alt="지도">` : '<p class="hint">GM이 지도 이미지를 올리면 여기에 표시됩니다.</p>'}
-    <h3>장소</h3><div class="loc-grid">${s.locations.map((l) => `<div class="loc-cell">📍 ${esc(l)}<small>${counts[l] ? `글 ${counts[l]}개` : ''}</small></div>`).join('')}</div>`;
+    <h3>장소 <small>${s.timeOfDay === 'night' ? '🌙 지금은 야간' : ''}</small></h3><div class="loc-grid">${s.locations
+      .map((l) => {
+        const closed = s.nightClosed.includes(l);
+        const locked = closed && s.timeOfDay === 'night';
+        return `<div class="loc-cell ${locked ? 'locked' : ''}">${locked ? '🔒' : '📍'} ${esc(l)}<small>${counts[l] ? `글 ${counts[l]}개` : ''}${closed ? ' · 야간 출입 금지' : ''}</small></div>`;
+      })
+      .join('')}</div>`;
 }
 
 function notices() {
