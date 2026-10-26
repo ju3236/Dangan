@@ -1,0 +1,17 @@
+{
+  "name": "dangan-rp",
+  "version": "1.0.0",
+  "description": "단간론파 기반 역극(롤플레이) 사이트 — 일상 / 조사 / 학급재판",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "socket.io": "^4.8.1"
+  }
+}

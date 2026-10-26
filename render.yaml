@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: dangan-rp
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
