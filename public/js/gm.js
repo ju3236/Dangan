@@ -117,7 +117,9 @@ export function render(el, name, args, what) {
     </section>
 
     <section class="gm-card"><h2>플레이어</h2>
-      ${s.players.map((p) => `<div class="row"><span class="dot ${p.online ? 'on' : ''}"></span>${esc(p.nickname)} ${p.isGM ? '<b class="gm-badge">GM</b>' : `<button class="btn tiny ghost" data-transfer="${p.id}">GM 넘기기</button>`}</div>`).join('')}
+      <p class="hint">GM은 여러 명일 수 있어요. 봉인된 사건은 GM끼리도 서로 보이지 않습니다.</p>
+      ${s.players.map((p) => `<div class="row"><span class="dot ${p.online ? 'on' : ''}"></span>${esc(p.nickname)} ${p.isGM ? '<b class="gm-badge">GM</b>' : ''}
+        <button class="btn tiny ghost" data-role="${p.id}" data-on="${p.isGM ? '' : '1'}">${p.isGM ? 'GM 해제' : 'GM 권한 주기'}</button></div>`).join('')}
       <h3>백업</h3>
       <p class="hint">무료 호스팅은 재시작 시 데이터가 사라질 수 있어요. 세션이 끝나면 백업해 두세요. (이미지 포함)</p>
       <div class="row wrap"><button class="btn small" id="exportBtn">방 백업 (JSON)</button>
@@ -263,7 +265,12 @@ function bind(el) {
     };
   on('mapClear', () => emit('gm:settings', { mapImage: '' }));
 
-  $$('[data-transfer]', el).forEach((b) => (b.onclick = () => confirm('이 플레이어에게 GM을 넘길까요?') && emit('gm:transfer', { playerId: b.dataset.transfer })));
+  $$('[data-role]', el).forEach((b) => {
+    b.onclick = () => {
+      const on = !!b.dataset.on;
+      if (confirm(on ? '이 플레이어에게도 GM 권한을 줄까요?' : '이 플레이어의 GM 권한을 해제할까요?')) emit('gm:role', { playerId: b.dataset.role, on });
+    };
+  });
   on('exportBtn', async () => {
     const data = await emit('gm:export');
     if (data) download(`dangan-${store.state.code}-backup.json`, JSON.stringify(data), 'application/json');

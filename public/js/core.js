@@ -52,8 +52,8 @@ export const local = {
 export const S = () => store.state;
 export const isGM = () => !!store.state?.me?.isGM;
 export const charById = (id) => store.state?.characters.find((c) => c.id === id);
-// 내가 조종할 수 있는 캐릭터 (GM은 전부)
-export const myChars = () => (store.state?.characters || []).filter((c) => c.mine || isGM());
+// 내가 조종하는 캐릭터: 내 캐릭터 + (GM이면) NPC. GM이 여러 명이라 다른 사람의 캐릭터는 넣지 않는다
+export const myChars = () => (store.state?.characters || []).filter((c) => c.mine || (isGM() && c.npc));
 export const ownedChars = () => (store.state?.characters || []).filter((c) => c.mine);
 export const students = () => (store.state?.characters || []).filter((c) => !c.npc);
 export const evidenceById = (id) => store.state?.evidence.find((e) => e.id === id);

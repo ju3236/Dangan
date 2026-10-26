@@ -57,9 +57,9 @@ export function openEditor(id = null, { npc = false } = {}) {
         <div class="row"><label class="grow">이름<input id="edName" maxlength="40" required></label><label>이름 색<input type="color" id="edColor"></label></div>
         <label>재능<input id="edTalent" maxlength="60" placeholder="초고교급 ○○"></label>
         <label>프로필<textarea id="edProfile" rows="9"></textarea></label>
-        <div class="row"><label class="grow">💗 좋아하는 것 (선물 키워드, 쉼표로 구분)<input id="edLikes" maxlength="300" placeholder="예: 초코, 홍차, 추리소설"></label>
+        <div class="row ${src && !src.mine ? 'hidden' : ''}"><label class="grow">💗 좋아하는 것 (선물 키워드, 쉼표로 구분)<input id="edLikes" maxlength="300" placeholder="예: 초코, 홍차, 추리소설"></label>
           <label class="grow">💢 싫어하는 것<input id="edDislikes" maxlength="300" placeholder="예: 버섯"></label></div>
-        <p class="hint">좋아하는 것/싫어하는 것은 본인과 GM만 볼 수 있어요. 선물 이름에 키워드가 들어 있으면 친밀도가 더 오르거나 내려갑니다.</p>
+        <p class="hint ${src && !src.mine ? 'hidden' : ''}">좋아하는 것/싫어하는 것은 본인만 볼 수 있어요 (GM도 못 봐요). 선물 이름에 키워드가 들어 있으면 친밀도가 더 오르거나 내려갑니다.</p>
       </section>
       <section data-pane="sprites" class="stack hidden">
         <p class="hint">첫 번째 스프라이트가 기본 표정이자 프로필 사진이 됩니다. 배경이 투명한 PNG를 추천해요. 학급재판에서 Alt+숫자로 표정을 빠르게 바꿀 수 있어요.</p>

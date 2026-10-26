@@ -99,7 +99,7 @@ function createRoom(code, title) {
     code,
     title: title || '희망과 절망의 학원',
     createdAt: Date.now(),
-    gmId: null,
+    gmIds: [], // GM은 여러 명일 수 있다
     day: 1,
     phase: 'daily',
     locations: [...DEFAULT_LOCATIONS],
@@ -127,6 +127,8 @@ function createRoom(code, title) {
 
 // 예전 데이터에 새 필드 채우기
 function migrate(room) {
+  if (!Array.isArray(room.gmIds)) room.gmIds = room.gmId ? [room.gmId] : [];
+  delete room.gmId;
   room.freeTime = { ...FREE_TIME_DEFAULTS, ...(room.freeTime || {}) };
   room.affinity = room.affinity || {};
   room.cases = room.cases || [];
@@ -158,8 +160,10 @@ function onlineSet(room) {
   return ids;
 }
 
+const isGMOf = (room, pid) => room.gmIds.includes(pid);
+
 function canSeeChars(room, pid, charIds) {
-  if (!charIds?.length || pid === room.gmId) return true;
+  if (!charIds?.length || isGMOf(room, pid)) return true;
   return charIds.some((id) => room.characters[id]?.ownerId === pid);
 }
 
@@ -174,7 +178,7 @@ function canSeeNotice(room, pid, n) {
 
 function canSeeMail(room, pid, m) {
   if (room.characters[m.charId]?.ownerId === pid) return true;
-  return pid === room.gmId && !isSealed(caseById(room, m.caseId));
+  return isGMOf(room, pid) && !isSealed(caseById(room, m.caseId));
 }
 
 // GM에게 보낼 사건 정보. 봉인 중이면 진상을 빼고, 시체 발견 뒤에는 단서 목록과 모노쿠마 파일만
@@ -192,7 +196,7 @@ function caseForGM(c) {
 }
 
 function publicState(room, pid) {
-  const gm = pid === room.gmId;
+  const gm = isGMOf(room, pid);
   const online = onlineSet(room);
   const visibleEvidence = new Set();
   const characters = Object.values(room.characters).map((c) => {
@@ -202,7 +206,9 @@ function publicState(room, pid) {
       sprites: c.sprites, skills: c.skills, alive: c.alive, npc: c.npc, mine: c.ownerId === pid,
     };
     if (own) {
-      Object.assign(v, { coins: c.coins, inventory: c.inventory, bullets: c.bullets, tickets: c.tickets, likes: c.likes, dislikes: c.dislikes });
+      Object.assign(v, { coins: c.coins, inventory: c.inventory, bullets: c.bullets, tickets: c.tickets });
+      // 좋아하는 것/싫어하는 것은 주인만 (GM도 선물 맞히기에 참여하므로)
+      if (c.ownerId === pid) Object.assign(v, { likes: c.likes, dislikes: c.dislikes });
       c.bullets.forEach((id) => visibleEvidence.add(id));
     }
     return v;
@@ -224,7 +230,7 @@ function publicState(room, pid) {
     mapImage: room.mapImage,
     rules: room.rules,
     me: { id: pid, isGM: gm, nickname: room.players[pid]?.nickname },
-    players: Object.values(room.players).map((p) => ({ id: p.id, nickname: p.nickname, isGM: p.id === room.gmId, online: online.has(p.id) })),
+    players: Object.values(room.players).map((p) => ({ id: p.id, nickname: p.nickname, isGM: isGMOf(room, p.id), online: online.has(p.id) })),
     characters,
     evidence,
     posts: room.posts,
@@ -258,7 +264,7 @@ function trialMsgView(room, m, gm) {
 }
 
 function sendTrialLog(room) {
-  eachSocket(room, (s, id) => s.emit('trial:log', room.trial.messages.map((m) => trialMsgView(room, m, id === room.gmId))));
+  eachSocket(room, (s, id) => s.emit('trial:log', room.trial.messages.map((m) => trialMsgView(room, m, isGMOf(room, id)))));
 }
 
 function eachSocket(room, fn) {
@@ -284,13 +290,13 @@ function trialPush(room, msg) {
   const m = { id: uid(), ts: Date.now(), ...msg };
   room.trial.messages.push(m);
   if (room.trial.messages.length > MAX_TRIAL_MESSAGES) room.trial.messages.splice(0, room.trial.messages.length - MAX_TRIAL_MESSAGES);
-  eachSocket(room, (s, pid) => s.emit('trial:msg', trialMsgView(room, m, pid === room.gmId)));
+  eachSocket(room, (s, pid) => s.emit('trial:msg', trialMsgView(room, m, isGMOf(room, pid))));
   scheduleSave();
   return m;
 }
 
 function trialUpdate(room, m) {
-  eachSocket(room, (s, pid) => s.emit('trial:update', trialMsgView(room, m, pid === room.gmId)));
+  eachSocket(room, (s, pid) => s.emit('trial:update', trialMsgView(room, m, isGMOf(room, pid))));
   scheduleSave();
 }
 
@@ -387,7 +393,7 @@ function sanitizeSkills(list, old = []) {
 io.on('connection', (socket) => {
   let room = null;
   let pid = null;
-  const isGM = () => !!room && pid === room.gmId;
+  const isGM = () => !!room && isGMOf(room, pid);
   const me = () => room?.players[pid];
   const ownChar = (id) => {
     const c = room?.characters[id];
@@ -453,7 +459,7 @@ io.on('connection', (socket) => {
       const code = newRoomCode();
       const r = (rooms[code] = createRoom(code, str(title, 60).trim()));
       const p = newPlayer(r, nickname, password);
-      r.gmId = p.id;
+      r.gmIds = [p.id];
       enter(r, p, reply);
     },
     { auth: false }
@@ -528,6 +534,11 @@ io.on('connection', (socket) => {
     let c = d.id && room.characters[d.id];
     if (c) {
       if (!ownChar(c.id)) return reply({ error: '권한이 없습니다.' });
+      // 좋아하는 것/싫어하는 것은 주인만 볼 수 있으니 주인이 저장할 때만 바꾼다
+      if (c.ownerId !== pid) {
+        delete fields.likes;
+        delete fields.dislikes;
+      }
       Object.assign(c, fields, { skills: sanitizeSkills(d.skills, c.skills) });
     } else {
       c = {
@@ -878,8 +889,9 @@ io.on('connection', (socket) => {
 
   // ---------- 사건 기획 (GM 전용) ----------
   const findCase = (id) => room.cases.find((c) => c.id === id);
-  const drawPool = (excludeGM) =>
-    Object.values(room.characters).filter((c) => c.alive && !c.npc && !(excludeGM && c.ownerId === room.gmId));
+  // excludeMe: 추첨을 누른 GM 본인의 캐릭터 제외
+  const drawPool = (excludeMe) =>
+    Object.values(room.characters).filter((c) => c.alive && !c.npc && !(excludeMe && c.ownerId === pid));
   const pick = (list) => list[crypto.randomInt(list.length)];
 
   // 흑막·피해자에게 비밀 메일
@@ -1396,12 +1408,18 @@ io.on('connection', (socket) => {
   );
 
   on(
-    'gm:transfer',
-    ({ playerId }) => {
+    'gm:role',
+    ({ playerId, on: enable }, reply) => {
       const p = room.players[playerId];
       if (!p) return;
-      room.gmId = p.id;
-      notice(room, `${p.nickname} 님이 새 GM이 되었습니다.`);
+      if (enable) {
+        if (!room.gmIds.includes(p.id)) room.gmIds.push(p.id);
+        notice(room, `${p.nickname} 님이 GM이 되었습니다.`);
+      } else {
+        if (room.gmIds.length <= 1) return reply({ error: 'GM은 최소 한 명 있어야 합니다.' });
+        room.gmIds = room.gmIds.filter((id) => id !== p.id);
+        notice(room, `${p.nickname} 님의 GM 권한이 해제되었습니다.`);
+      }
       broadcast(room);
       sendTrialLog(room);
     },
@@ -1422,7 +1440,7 @@ io.on('connection', (socket) => {
   on(
     'gm:export',
     (_, reply) => {
-      const { players, sessions, gmId, ...rest } = room;
+      const { players, sessions, gmIds, ...rest } = room;
       reply(rest);
     },
     { gm: true }
@@ -1432,7 +1450,7 @@ io.on('connection', (socket) => {
     'gm:import',
     ({ data }, reply) => {
       if (!data || data.version !== VERSION) return reply({ error: '이 버전의 백업 파일이 아닙니다.' });
-      const keep = { code: room.code, players: room.players, sessions: room.sessions, gmId: room.gmId };
+      const keep = { code: room.code, players: room.players, sessions: room.sessions, gmIds: room.gmIds };
       const base = createRoom(room.code);
       for (const k of Object.keys(base)) if (k in data) base[k] = data[k];
       let next = { ...base, ...keep };
@@ -1443,7 +1461,7 @@ io.on('connection', (socket) => {
       Object.keys(room).forEach((k) => delete room[k]);
       Object.assign(room, migrate(next));
       // 주인 계정이 없는 캐릭터는 현재 GM 소유로
-      Object.values(room.characters).forEach((c) => !room.players[c.ownerId] && (c.ownerId = room.gmId));
+      Object.values(room.characters).forEach((c) => !room.players[c.ownerId] && (c.ownerId = room.gmIds[0]));
       sendTrialLog(room);
       broadcast(room);
       reply({ ok: true });
