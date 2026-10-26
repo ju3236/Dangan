@@ -104,9 +104,26 @@ export function fmtTime(ts, withDate = true) {
   return `${d.getMonth() + 1}.${String(d.getDate()).padStart(2, '0')}. ${hm}`;
 }
 
-// {약점} → 클릭 가능한 약점 span
-export function weakHTML(text, msgId, clickable = true) {
-  return esc(text).replace(/\{([^{}]+)\}/g, (_, w) => `<span class="weak" ${clickable ? `data-weak="${msgId}"` : ''}>${w}</span>`);
+// 텍스트 속 언령 이름 → 누르면 설명이 뜨는 span (내가 볼 수 있는 언령만)
+export function clueHTML(text) {
+  const list = (store.state?.evidence || []).filter((e) => e.name.length >= 2).sort((a, b) => b.name.length - a.name.length);
+  const html = esc(text);
+  if (!list.length) return html;
+  const byName = new Map(list.map((e) => [esc(e.name), e.id]));
+  const re = new RegExp([...byName.keys()].map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'g');
+  return html.replace(re, (m) => `<span class="clue" data-ev="${byName.get(m)}" title="언령 설명 보기">${m}</span>`);
+}
+
+// {약점} → 클릭 가능한 약점 span. clues면 약점 밖의 언령 이름도 강조
+export function weakHTML(text, msgId, clickable = true, clues = false) {
+  return String(text ?? '')
+    .split(/(\{[^{}]+\})/)
+    .map((part) => {
+      const m = /^\{([^{}]+)\}$/.exec(part);
+      if (m) return `<span class="weak" ${clickable ? `data-weak="${msgId}"` : ''}>${esc(m[1])}</span>`;
+      return clues ? clueHTML(part) : esc(part);
+    })
+    .join('');
 }
 
 // 다시 그려도 입력 중인 값·포커스·스크롤·펼침 상태를 유지한다

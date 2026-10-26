@@ -228,7 +228,7 @@ button.link { background: none; border: 0; color: inherit; cursor: pointer; padd
 
 /* ---------- 학급재판 ---------- */
 .view-trial { height: calc(100vh - 62px); }
-.trial-room { display: grid; grid-template-columns: minmax(0, 1fr) 360px; height: 100%; }
+.trial-room { display: grid; grid-template-columns: minmax(0, 1fr) 400px; height: 100%; }
 .court { display: flex; flex-direction: column; min-height: 0; }
 .seats { display: flex; gap: 6px; padding: 8px 12px; overflow-x: auto; background: #000; border-bottom: 1px solid var(--line); flex: none; }
 .seat { display: flex; flex-direction: column; align-items: center; font-size: 11px; color: var(--muted); gap: 2px; opacity: .65; transition: opacity .2s, transform .2s; }
@@ -279,7 +279,7 @@ button.link { background: none; border: 0; color: inherit; cursor: pointer; padd
 .res.break { color: var(--yellow); }
 .res.miss { color: var(--muted); }
 .res.pending { color: var(--orange); font-size: 12px; }
-.trial-input { background: var(--panel); border-top: 2px solid var(--pink); padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; flex: none; }
+.trial-input { background: var(--panel2); border-top: 2px solid var(--pink); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; flex: none; }
 .ti-top { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .ti-top select { padding: 4px 6px; }
 .sprite-strip { display: flex; gap: 4px; overflow-x: auto; min-height: 20px; }
@@ -287,7 +287,17 @@ button.link { background: none; border: 0; color: inherit; cursor: pointer; padd
 .sprite-btn img { width: 100%; height: 50px; object-fit: cover; object-position: top; }
 .sprite-btn span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 2px; }
 .sprite-btn.active { border-color: var(--pink); color: #fff; }
-.trial-input textarea { min-height: 46px; }
+.trial-input textarea { min-height: 64px; }
+.trial-input .row { align-items: stretch; }
+.ti-top select { flex: 1; min-width: 0; }
+.clue { color: var(--yellow); border-bottom: 1px dashed var(--yellow); cursor: help; font-weight: 700; }
+.clue:hover { background: rgba(255, 207, 58, .15); }
+.textbox.announce .clue { color: #a66b00; border-color: #a66b00; }
+.lg.announce .clue { color: #a66b00; border-color: #a66b00; }
+.clue-pop { border-left: 6px solid var(--yellow); padding: 4px 4px 4px 16px; background: linear-gradient(90deg, #3a2a08, transparent 70%); }
+.clue-tag { color: var(--yellow); font-size: 12px; font-weight: 900; }
+.clue-pop h2 { color: var(--yellow); margin: 4px 0 10px; }
+.clue-desc { white-space: pre-wrap; font-size: 15px; line-height: 1.7; }
 .trial-side { background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
 .side-tabs { display: flex; flex: none; }
 .side-tabs button { flex: 1; background: var(--panel2); border: 0; color: var(--muted); padding: 9px 0; cursor: pointer; font: 400 15px 'Black Han Sans'; }
@@ -480,9 +490,9 @@ button.link { background: none; border: 0; color: inherit; cursor: pointer; padd
 /* ---------- 반응형 ---------- */
 @media (max-width: 1000px) {
   .me-grid { grid-template-columns: minmax(0, 1fr); }
-  .trial-room { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 340px; height: auto; }
+  .trial-room { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 560px; height: auto; }
   .view-trial { height: auto; }
-  .court { height: calc(100vh - 110px); min-height: 520px; }
+  .court { height: 62vh; min-height: 380px; }
   .trial-side { border-left: 0; border-top: 1px solid var(--line); }
 }
 @media (max-width: 760px) {

@@ -1,7 +1,7 @@
 // 학급재판: 실시간 채팅 + 단간론파식 대화창 + 표정 스프라이트
 import {
   $, $$, esc, emit, store, render as paint, toast, modal, isGM, charById, myChars, students, evidenceById,
-  avatar, spriteOf, charSelectHTML, fmtTime, weakHTML, speakAs, lastSprite, download,
+  avatar, spriteOf, charSelectHTML, fmtTime, weakHTML, clueHTML, speakAs, lastSprite, download,
 } from './core.js';
 
 let shownId = null; // 무대에 표시 중인 메시지
@@ -27,20 +27,20 @@ export function mount(el) {
           <div class="tb-nav"><button id="tbPrev" title="이전">◀</button><button id="tbNext" title="다음">▶</button><button id="tbLive" title="최신으로">LIVE</button></div>
         </div>
       </div>
-      <form class="trial-input" id="tForm">
-        <div class="ti-top" id="tiTop"></div>
-        <div class="sprite-strip" id="spriteStrip"></div>
-        <div class="row">
-          <textarea id="tText" rows="2" placeholder="발언 입력 (Enter 전송 · Shift+Enter 줄바꿈) — {중괄호}로 감싸면 약점이 됩니다"></textarea>
-          <button class="btn pink">발언</button>
-        </div>
-      </form>
     </section>
     <aside class="trial-side">
       <nav class="side-tabs" id="sideTabs">
         <button data-side="log">로그</button><button data-side="bullets">언령</button><button data-side="skills">스킬</button><button data-side="vote">투표</button>
       </nav>
       <div class="side-body" id="sideBody" data-keep-scroll="side"></div>
+      <form class="trial-input" id="tForm">
+        <div class="ti-top" id="tiTop"></div>
+        <div class="sprite-strip" id="spriteStrip"></div>
+        <div class="row">
+          <textarea id="tText" rows="3" placeholder="발언 입력 (Enter 전송 · Shift+Enter 줄바꿈)&#10;{중괄호}로 감싸면 약점이 됩니다"></textarea>
+          <button class="btn pink">발언</button>
+        </div>
+      </form>
     </aside>
   </div>`;
 
@@ -56,6 +56,8 @@ export function mount(el) {
   };
   $('#textbox').onclick = (e) => {
     if (e.target.closest('.tb-nav')) return;
+    const ev = e.target.closest('[data-ev]');
+    if (ev) return showClue(ev.dataset.ev);
     const w = e.target.closest('[data-weak]');
     if (w) return openShoot(w.dataset.weak);
     if (typing) finishTyping();
@@ -211,9 +213,10 @@ function finishTyping() {
 function textHTML(m) {
   if (m.type === 'shoot') {
     const res = { break: '<b class="res break">BREAK!!</b>', miss: '<b class="res miss">튕겨났다…</b>', pending: '<b class="res pending">판정 대기</b>' }[m.result] || '';
-    return `${esc(m.text)} ${res}`;
+    return `${clueHTML(m.text)} ${res}`;
   }
-  if (m.type === 'say') return weakHTML(m.text, m.id, !m.broken);
+  if (m.type === 'say') return weakHTML(m.text, m.id, !m.broken, true);
+  if (m.type === 'narration' || m.type === 'announce') return clueHTML(m.text);
   return esc(m.text);
 }
 
@@ -331,18 +334,18 @@ function logHTML() {
           case 'say':
             return `<div class="lg say ${m.id === shownId ? 'current' : ''} ${m.broken ? 'broken' : ''}" data-show="${m.id}" style="--c:${c?.color || '#999'}">
               ${avatar(c, 30, m.spriteId)}<div><b>${esc(c?.name || '?')}</b> <small>${t}</small>${gm && m.answerId ? ` <small class="ans">정답: ${esc(evidenceById(m.answerId)?.name || '?')}</small>` : ''}
-              <div>${weakHTML(m.text, m.id, !m.broken)}</div></div></div>`;
+              <div>${weakHTML(m.text, m.id, !m.broken, true)}</div></div></div>`;
           case 'ooc':
-            return `<div class="lg ooc"><b>${esc(m.author)}</b> <small>OOC ${t}</small> ${esc(m.text)}</div>`;
+            return `<div class="lg ooc" data-show-none><b>${esc(m.author)}</b> <small>OOC ${t}</small> ${clueHTML(m.text)}</div>`;
           case 'narration':
-            return `<div class="lg narration" data-show="${m.id}">${esc(m.text)}</div>`;
+            return `<div class="lg narration" data-show="${m.id}">${clueHTML(m.text)}</div>`;
           case 'announce':
-            return `<div class="lg announce" data-show="${m.id}"><b>📺 모노쿠마</b> ${esc(m.text)}</div>`;
+            return `<div class="lg announce" data-show="${m.id}"><b>📺 모노쿠마</b> ${clueHTML(m.text)}</div>`;
           case 'shoot': {
             const res = { break: 'BREAK!!', miss: '튕겨났다…', pending: '판정 대기' }[m.result];
             return `<div class="lg shoot ${m.kind} ${m.result}" data-show="${m.id}" style="--c:${c?.color || '#f80'}">
               <b>${esc(c?.name || '')} — ${m.kind === 'agree' ? '동의한다!' : '그건 틀렸어!'}</b> <span class="res">${res}</span>
-              <div>${esc(m.text)}</div>
+              <div>${clueHTML(m.text)}</div>
               ${gm && m.result === 'pending' ? `<div class="row"><button class="btn tiny" data-judge="${m.id}" data-ok="1">✔ 논파 성공</button><button class="btn tiny ghost" data-judge="${m.id}">✘ 실패</button></div>` : ''}</div>`;
           }
           case 'skill':
@@ -365,7 +368,7 @@ function bulletsHTML() {
     chars
       .map(
         (c) => `<h4 style="color:${c.color}">${esc(c.name)} <small>${c.bullets.length}개</small></h4>
-        ${c.bullets.map((id) => evidenceById(id)).filter(Boolean).map((e) => `<div class="bullet-card"><b>⚡ ${esc(e.name)}</b><p>${esc(e.desc)}</p></div>`).join('') || '<p class="hint">언령 없음</p>'}`
+        ${c.bullets.map((id) => evidenceById(id)).filter(Boolean).map((e) => `<div class="bullet-card"><b>⚡ ${esc(e.name)}</b><p>${clueHTML(e.desc)}</p></div>`).join('') || '<p class="hint">언령 없음</p>'}`
       )
       .join('');
 }
@@ -421,6 +424,8 @@ function bindSide(body) {
   $$('[data-show]', body).forEach(
     (d) =>
       (d.onclick = (e) => {
+        const ev = e.target.closest('[data-ev]');
+        if (ev) return showClue(ev.dataset.ev);
         const w = e.target.closest('[data-weak]');
         if (w) return openShoot(w.dataset.weak);
         if (e.target.closest('button')) return;
@@ -430,6 +435,7 @@ function bindSide(body) {
         d.classList.add('current');
       })
   );
+  $$('[data-show-none] [data-ev]', body).forEach((x) => (x.onclick = () => showClue(x.dataset.ev)));
   $$('[data-judge]', body).forEach((b) => (b.onclick = () => emit('trial:judge', { msgId: b.dataset.judge, ok: !!b.dataset.ok })));
   $$('[data-skill]', body).forEach((b) => {
     b.onclick = async () => {
@@ -493,4 +499,18 @@ function openShoot(msgId) {
   };
   $('#refuteBtn', d).onclick = () => fire('refute');
   $('#agreeBtn', d).onclick = () => fire('agree');
+}
+
+// ---------- 단서 팝업 ----------
+// 대사 속 언령 이름을 누르면 그 언령의 설명을 보여준다
+function showClue(id) {
+  const e = evidenceById(id);
+  if (!e) return;
+  const holders = myChars().filter((c) => c.bullets?.includes(id));
+  modal(`<div class="clue-pop">
+    <div class="clue-tag">⚡ 언령 (말탄환)</div>
+    <h2>${esc(e.name)}</h2>
+    <p class="clue-desc">${esc(e.desc || '설명 없음')}</p>
+    <div class="hint">${e.day}일째${e.location ? ` · 📍${esc(e.location)}` : ''}${holders.length ? ` · 보유: ${holders.map((c) => esc(c.name)).join(', ')}` : ''}</div>
+  </div>`);
 }
