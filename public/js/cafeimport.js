@@ -24,7 +24,8 @@ export function parseCafe(raw) {
   if (di < 0) return { error: '게시글 작성 시각(「2024.04.24. 02:18조회 17」 같은 줄)을 찾지 못했어요. 게시글 화면 전체를 복사해 주세요.' };
   let hi = -1;
   for (let i = di - 1; i >= 0; i--) if (/목록$/.test(lines[i])) { hi = i; break; }
-  const head = lines.slice(hi + 1, di).filter((l) => !NOISE.has(l) && !/^\d+$/.test(l));
+  // 「구독 중이 멤버의 글을 구독탭에서…」, 「1:1 채팅」, 등급 표시 같은 줄은 붙어서 한 줄로 오기도 한다
+  const head = lines.slice(hi + 1, di).filter((l) => !NOISE.has(l) && !/^\d+$/.test(l) && !/구독|1:1 채팅|^인기멤버/.test(l));
   if (head.length < 2) return { error: '게시판 이름·제목·작성자를 찾지 못했어요.' };
   const post = {
     board: head.length >= 3 ? head[0] : '',
@@ -47,6 +48,7 @@ export function parseCafe(raw) {
   let ci = lines.findIndex((l, k) => k >= i && l === '댓글알림');
   if (ci < 0) ci = lines.findIndex((l, k) => k >= i && /^클린봇/.test(l));
   const blocks = [];
+  let postAuthor = null;
   if (ci >= 0) {
     let cur = [];
     for (let k = ci + 1; k < lines.length; k++) {
@@ -55,11 +57,14 @@ export function parseCafe(raw) {
       const m = CMT_DATE.exec(l);
       if (m) {
         const ls = cur.filter((x) => !NOISE.has(x));
+        // 카페는 글쓴이의 댓글에 「작성자」 표시를 붙인다 → 글쓴이를 확실히 알 수 있다
+        if (ls.length && cur.includes('작성자')) postAuthor = ls[0];
         if (ls.length) blocks.push({ author: ls[0], text: ls.slice(1), ts: toTs(m) });
         cur = [];
       } else cur.push(l);
     }
   }
+  if (postAuthor) post.author = postAuthor;
   // 답글: 본문이 「상대 이름 + 공백」으로 시작하면 그 사람에게 단 답글
   const names = [...new Set([post.author, ...blocks.map((b) => b.author)])].sort((a, b) => b.length - a.length);
   post.comments = blocks.map((b) => {

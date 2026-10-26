@@ -901,7 +901,7 @@ io.on('connection', (socket) => {
         };
         room.posts.push(post);
         room.posts.sort((a, b) => a.ts - b.ts);
-      }
+      } else Object.assign(post, who(d.author)); // 다시 가져오면 글쓴이는 새로 읽은 쪽으로 (예전 버전이 잘못 읽은 경우 바로잡기)
       const seen = new Set(post.comments.map((c) => `${c.ts}|${c.charId || c.displayName}|${c.body}`));
       let added = 0;
       for (const x of arr(d.comments, 3000)) {
