@@ -39,8 +39,11 @@ export function openProfile(id) {
     };
 }
 
-export function openEditor(id = null, { npc = false } = {}) {
+export function openEditor(id = null, { npc = false, ownerId = null } = {}) {
   const src = id ? charById(id) : null;
+  // GM이 새 학생을 만들 때는 어느 플레이어의 캐릭터인지 고를 수 있다
+  const pickOwner = !src && !npc && isGM();
+  const meId = store.state.me.id;
   const draft = {
     name: src?.name || '',
     talent: src?.talent || '',
@@ -56,6 +59,7 @@ export function openEditor(id = null, { npc = false } = {}) {
       <section data-pane="info" class="stack">
         <div class="row"><label class="grow">이름<input id="edName" maxlength="40" required></label><label>이름 색<input type="color" id="edColor"></label></div>
         <label>재능<input id="edTalent" maxlength="60" placeholder="초고교급 ○○"></label>
+        ${pickOwner ? `<label>플레이어 (이 캐릭터를 굴릴 사람)<select id="edOwner">${store.state.players.map((p) => `<option value="${p.id}" ${p.id === (ownerId || meId) ? 'selected' : ''}>${esc(p.nickname)}${p.id === meId ? ' (나)' : ''}</option>`).join('')}</select></label>` : ''}
         <label>프로필<textarea id="edProfile" rows="9"></textarea></label>
         <div class="row ${src && !src.mine ? 'hidden' : ''}"><label class="grow">💗 좋아하는 것 (선물 키워드, 쉼표로 구분)<input id="edLikes" maxlength="300" placeholder="예: 초코, 홍차, 추리소설"></label>
           <label class="grow">💢 싫어하는 것<input id="edDislikes" maxlength="300" placeholder="예: 버섯"></label></div>
@@ -182,6 +186,7 @@ export function openEditor(id = null, { npc = false } = {}) {
     const res = await emit('character:save', {
       id,
       npc,
+      ownerId: $('#edOwner', d)?.value,
       name: $('#edName', d).value,
       talent: $('#edTalent', d).value,
       color: $('#edColor', d).value,

@@ -669,6 +669,6 @@ function showClue(id) {
     <div class="clue-tag">⚡ 언령 (말탄환)</div>
     <h2>${esc(e.name)}</h2>
     <p class="clue-desc">${esc(e.desc || '설명 없음')}</p>
-    <div class="hint">${e.day}일째${e.location ? ` · 📍${esc(e.location)}` : ''}${holders.length ? ` · 보유: ${holders.map((c) => esc(c.name)).join(', ')}` : ''}</div>
+    <div class="hint">${e.day}일째${e.location ? ` · 📍${esc(e.location)}` : ''}${holders.length ? ` · 보유: ${holders.map((c) => esc(c.name)).join(', ')}` : e.presented ? ' · 학급재판에서 공개됨' : ''}</div>
   </div>`);
 }

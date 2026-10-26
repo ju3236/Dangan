@@ -57,7 +57,8 @@ export function render(el, name, args, what) {
         )
         .join('') || '<tr><td colspan="5" class="hint">캐릭터 없음</td></tr>'}
       </tbody></table>
-      <button class="btn small" id="newNpc">+ NPC 만들기</button>
+      <div class="row wrap"><button class="btn small pink" id="newStudent">+ 학생 만들기</button><button class="btn small" id="newNpc">+ NPC 만들기</button></div>
+      <p class="hint">학생 만들기에서 플레이어를 고르면 친구 캐릭터도 대신 만들어 줄 수 있어요. 기존 캐릭터는 「수정」으로 고치고, 플레이어 칸에서 주인을 바꿀 수 있습니다.</p>
     </section>
 
     <section class="gm-card"><h2>언령 관리</h2>
@@ -244,6 +245,7 @@ function bind(el) {
     };
   });
   on('newNpc', () => openEditor(null, { npc: true }));
+  on('newStudent', () => openEditor(null));
 
   on('evCreate', async () => {
     const res = await emit('evidence:create', { name: $('#evName').value, desc: $('#evDesc').value, location: $('#evLoc').value, charIds: checked('evto') });

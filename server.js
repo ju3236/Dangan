@@ -381,7 +381,7 @@ function publicState(room, pid) {
     return v;
   });
   const evidence = Object.values(room.evidence)
-    .filter((e) => gm || visibleEvidence.has(e.id))
+    .filter((e) => gm || visibleEvidence.has(e.id) || e.presented)
     .map((e) => (gm ? { ...e, holders: Object.values(room.characters).filter((c) => c.bullets.includes(e.id)).map((c) => c.id) } : e));
   const votes = room.trial.votes;
   const tally = {};
@@ -465,6 +465,19 @@ function notice(room, text, charIds = [], extra = {}) {
   room.notices.push(n);
   if (room.notices.length > MAX_NOTICES) room.notices.splice(0, room.notices.length - MAX_NOTICES);
   eachSocket(room, (s, pid) => canSeeNotice(room, pid, n) && s.emit('notice', n));
+}
+
+// 학급재판에서 꺼낸 언령은 모두에게 공개된다 (대사에 이름이 들어가면 누구나 눌러서 설명을 볼 수 있게)
+// char가 있으면 그 캐릭터가 가진 언령만, 없으면(GM 나레이션) 이름이 나온 언령 전부
+function presentClues(room, text, char) {
+  let changed = false;
+  for (const ev of Object.values(room.evidence)) {
+    if (ev.presented || ev.name.length < 2 || !text.includes(ev.name)) continue;
+    if (char && !char.bullets.includes(ev.id)) continue;
+    ev.presented = true;
+    changed = true;
+  }
+  return changed;
 }
 
 function trialPush(room, msg) {
@@ -755,8 +768,10 @@ io.on('connection', (socket) => {
       }
       Object.assign(c, fields, { skills: sanitizeSkills(d.skills, c.skills) });
     } else {
+      // GM은 다른 플레이어의 캐릭터를 대신 만들어 줄 수 있다
+      const ownerId = isGM() && d.ownerId && room.players[d.ownerId] ? d.ownerId : pid;
       c = {
-        id: uid(), ownerId: pid, ...fields, skills: sanitizeSkills(d.skills),
+        id: uid(), ownerId, ...fields, skills: sanitizeSkills(d.skills),
         alive: true, npc: !!d.npc && isGM(), coins: 0, inventory: [], bullets: [], tickets: room.freeTime.ticketsPerDay, createdAt: Date.now(),
       };
       room.characters[c.id] = c;
@@ -1462,6 +1477,7 @@ io.on('connection', (socket) => {
       if (!c) return reply({ error: '말할 캐릭터를 선택하세요.' });
     }
     const answerId = isGM() && d.answerId && room.evidence[d.answerId] ? d.answerId : null;
+    if (type !== 'ooc' && presentClues(room, text, c)) broadcast(room);
     trialPush(room, {
       type, text, charId: c?.id || null, spriteId: c ? str(d.spriteId, 20) || null : null,
       author: me().nickname, authorId: pid, answerId,
@@ -1482,6 +1498,10 @@ io.on('connection', (socket) => {
     const ev = room.evidence[evidenceId];
     if (!target || !c || !ev) return reply({ error: '쏠 수 없습니다.' });
     if (!c.bullets.includes(evidenceId)) return reply({ error: `${c.name} 은(는) 그 언령을 가지고 있지 않습니다.` });
+    if (!ev.presented) {
+      ev.presented = true;
+      broadcast(room);
+    }
     if (target.type === 'showdown') {
       const sd = room.trial.showdown;
       if (!sd || sd.id !== target.showdownId) return reply({ error: '끝난 반론 쇼다운입니다.' });
@@ -1642,6 +1662,7 @@ io.on('connection', (socket) => {
   // 누군가의 주장에 1:1로 반론. 상대가 약점을 베면, 반론한 쪽(또는 GM)이 수긍/계속을 고른다
   const showdownOwner = (sd) => sd && (room.characters[sd.attackerId]?.ownerId === pid || isGM());
   function showdownLine(sd) {
+    if (presentClues(room, sd.lines[sd.index], room.characters[sd.attackerId])) broadcast(room);
     trialPush(room, {
       type: 'showdown', showdownId: sd.id, charId: sd.attackerId, targetId: sd.targetId,
       line: sd.index + 1, total: sd.lines.length, text: sd.lines[sd.index], author: me().nickname, authorId: pid,
