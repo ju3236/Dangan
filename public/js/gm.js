@@ -72,6 +72,20 @@ export function render(el, name, args, what) {
       <button class="btn small pink" id="itGrant">지급</button>
     </section>
 
+    <section class="gm-card wide"><h2>자유시간 · 친밀도</h2>
+      <div class="ft-settings">
+        ${[['ticketsPerDay', '하루 티켓'], ['eventPoints', '자유시간 1회'], ['giftPoints', '선물'], ['likedPoints', '좋아하는 선물'], ['dislikedPoints', '싫어하는 선물'], ['levelPoints', '레벨당 점수'], ['maxLevel', '최대 레벨']]
+          .map(([k, l]) => `<label>${l}<input type="number" id="ft-${k}" value="${s.freeTime[k]}" class="num"></label>`)
+          .join('')}
+        <button class="btn small pink" id="ftSave">설정 저장</button>
+      </div>
+      <div class="row wrap"><b>티켓</b>${students().map((c) => `<span class="ticket-chip">${esc(c.name)} <b>${c.tickets}</b><button data-tk="${c.id}:1">+</button><button data-tk="${c.id}:-1">−</button></span>`).join('')}
+        <button class="btn tiny" id="ftRefill">전원 충전</button></div>
+      <p class="hint">다음 날로 넘기면 티켓이 자동으로 충전됩니다.</p>
+      <div class="row wrap">친밀도 조정 ${charOpts('affA')} ♥ ${charOpts('affB', 1)} <input type="number" id="affDelta" value="5" class="num"><button class="btn tiny pink" id="affApply">적용</button></div>
+      ${affinityMatrix()}
+    </section>
+
     <section class="gm-card wide"><h2>매점 관리</h2>
       <div class="row"><label>모노모노 머신 가격 <input type="number" id="gachaPrice" value="${s.shop.gachaPrice}" class="num"></label></div>
       <table class="gm-table shop-edit"><thead><tr><th>아이콘</th><th>이름</th><th>설명</th><th>가격</th><th>재고<br><small>(빈칸=무한)</small></th><th>머신</th><th></th></tr></thead><tbody>
@@ -110,6 +124,29 @@ export function render(el, name, args, what) {
   </div>`
   );
   bind(el);
+}
+
+const students = () => store.state.characters.filter((c) => !c.npc);
+const charOpts = (id, sel = 0) => `<select id="${id}">${students().map((c, i) => `<option value="${c.id}" ${i === sel ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>`;
+
+// 학생 × 학생 친밀도 표
+function affinityMatrix() {
+  const st = students();
+  if (st.length < 2) return '';
+  const aff = store.state.affinity;
+  return `<div class="aff-matrix-wrap"><table class="aff-matrix"><thead><tr><th></th>${st.map((c) => `<th style="color:${c.color}">${esc(c.name)}</th>`).join('')}</tr></thead><tbody>
+    ${st
+      .map(
+        (a) => `<tr><th style="color:${a.color}">${esc(a.name)}</th>${st
+          .map((b) => {
+            if (a.id === b.id) return '<td class="self">—</td>';
+            const r = aff[[a.id, b.id].sort().join('|')];
+            return `<td class="lv${r?.level || 0}" title="${r?.points || 0}점 · 자유시간 ${r?.events || 0}회">${r ? `Lv.${r.level}<small>${r.points}</small>` : '·'}</td>`;
+          })
+          .join('')}</tr>`
+      )
+      .join('')}
+  </tbody></table></div>`;
 }
 
 function bind(el) {
@@ -162,6 +199,23 @@ function bind(el) {
     };
   });
   $$('[data-evdel]', el).forEach((b) => (b.onclick = () => confirm('이 언령을 삭제할까요? 모든 캐릭터에게서 사라집니다.') && emit('evidence:delete', { id: b.dataset.evdel })));
+
+  on('ftSave', async () => {
+    const data = {};
+    ['ticketsPerDay', 'eventPoints', 'giftPoints', 'likedPoints', 'dislikedPoints', 'levelPoints', 'maxLevel'].forEach((k) => (data[k] = $('#ft-' + k).value));
+    if (await emit('gm:freetime', data)) toast('자유시간 설정을 저장했습니다.');
+  });
+  on('ftRefill', () => emit('gm:tickets', { refill: true }));
+  $$('[data-tk]', el).forEach((b) => {
+    b.onclick = () => {
+      const [charId, delta] = b.dataset.tk.split(':');
+      emit('gm:tickets', { charId, delta: +delta });
+    };
+  });
+  on('affApply', () => {
+    if ($('#affA').value === $('#affB').value) return toast('서로 다른 두 학생을 고르세요.', 'error');
+    emit('gm:affinity', { a: $('#affA').value, b: $('#affB').value, delta: $('#affDelta').value });
+  });
 
   on('itGrant', async () => {
     const res = await emit('item:grant', { icon: $('#itIcon').value, name: $('#itName').value, desc: $('#itDesc').value, charIds: checked('itto') });

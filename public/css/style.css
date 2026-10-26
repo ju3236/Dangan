@@ -514,3 +514,47 @@ button.link { background: none; border: 0; color: inherit; cursor: pointer; padd
   .hb-body { padding: 14px 10px; }
   .gm-table { display: block; overflow-x: auto; }
 }
+
+/* ---------- 자유시간 / 친밀도 ---------- */
+.tag.freetime { color: #d6336c; }
+.heart { color: var(--pink); }
+.hearts { color: var(--pink); letter-spacing: 1px; font-size: 13px; }
+.hearts i { color: #c9b8d4; font-style: normal; }
+.ft-with { display: inline-flex; align-items: center; gap: 5px; margin-left: 8px; padding: 2px 10px 2px 8px; background: #fff0f6; border-radius: 12px; font-size: 12px; color: #b0175c; }
+.ft-with .avatar { border-radius: 50%; }
+.ft-box { background: #fff0f6; border-left: 4px solid var(--pink); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; color: var(--ink); }
+.ft-box .tickets { color: var(--pink); font-size: 16px; }
+.ft-box p { margin: 0; }
+.ticket-count b, .report-head .tickets { color: var(--pink); }
+.likes { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 4px; }
+.report-head { display: flex; gap: 14px; align-items: center; padding: 12px; border-left: 5px solid var(--c); background: linear-gradient(90deg, color-mix(in srgb, var(--c) 22%, transparent), transparent); margin-bottom: 6px; }
+.report-head .frag { color: var(--yellow); font-size: 18px; }
+.report-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 1fr)); gap: 8px; margin-top: 8px; }
+.report-row { display: flex; gap: 10px; align-items: center; background: #13232c; padding: 10px; border-left: 4px solid var(--c); }
+.report-row.dead { opacity: .55; }
+.report-row small { color: var(--muted); }
+.report-row .hearts { font-size: 16px; }
+.report-row .hearts i { color: #3a5560; }
+.aff-bar { height: 5px; background: #0a1418; margin-top: 4px; }
+.aff-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--pink), #ffb3d1); transition: width .6s; }
+.gift-pick { display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow-y: auto; margin: 10px 0; }
+.gift-pick .icon { font-size: 24px; }
+.ft-settings { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+.ft-settings label { font-size: 12px; }
+.ticket-chip { background: var(--panel2); padding: 2px 4px 2px 8px; font-size: 12px; display: inline-flex; gap: 4px; align-items: center; }
+.ticket-chip b { color: var(--pink); }
+.ticket-chip button { background: #3a3046; border: 0; color: #fff; cursor: pointer; width: 18px; }
+.aff-matrix-wrap { overflow-x: auto; }
+.aff-matrix { border-collapse: collapse; font-size: 12px; }
+.aff-matrix th, .aff-matrix td { border: 1px solid var(--line); padding: 4px 8px; text-align: center; white-space: nowrap; }
+.aff-matrix td small { display: block; color: var(--muted); font-size: 10px; }
+.aff-matrix td.self { background: #000; color: #333; }
+.aff-matrix td.lv1 { background: rgba(255, 62, 138, .12); }
+.aff-matrix td.lv2 { background: rgba(255, 62, 138, .24); }
+.aff-matrix td.lv3 { background: rgba(255, 62, 138, .38); }
+.aff-matrix td.lv4 { background: rgba(255, 62, 138, .55); }
+.aff-matrix td.lv5, .aff-matrix td.lv6, .aff-matrix td.lv7, .aff-matrix td.lv8, .aff-matrix td.lv9, .aff-matrix td.lv10 { background: var(--pink); color: #fff; }
+.splash.fragment { background: radial-gradient(circle, rgba(255, 62, 138, .45), rgba(0, 0, 0, .8)); }
+.splash.fragment .word { color: #fff; --sc: var(--pink); font-size: clamp(44px, 10vw, 110px); }
+.toast.affinity { border-left-color: #ff7eb3; }
+.notice-list li.affinity, .notice-list li.gift { border-color: #ff7eb3; }

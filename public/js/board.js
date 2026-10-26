@@ -9,6 +9,7 @@ export const BOARDS = {
   notice: '📢 공지사항',
   daily: '☀️ 일상',
   investigation: '🔍 조사',
+  freetime: '💞 자유시간',
   free: '💬 자유 (OOC)',
 };
 const BOARD_DESC = {
@@ -16,6 +17,7 @@ const BOARD_DESC = {
   notice: 'GM과 모노쿠마의 공지',
   daily: '일상 파트 역극 — 캐릭터끼리의 하루를 글로 써 주세요.',
   investigation: '조사 파트 — 조사하고 싶은 장소/행동을 글로 올리면 GM이 댓글로 결과를 알려줍니다.',
+  freetime: '자유시간 티켓으로 다른 학생과 함께 보낸 시간. 함께한 만큼 친밀도가 올라갑니다.',
   free: '캐릭터 밖(OOC) 잡담, 질문, 공지 확인',
 };
 const PAGE_SIZE = 15;
@@ -146,7 +148,7 @@ function listView(board) {
       <td class="title"><a href="#/post/${p.id}">${board === 'all' && !pin ? `<span class="tag ${p.board}">${BOARDS[p.board].replace(/^\S+ /, '')}</span>` : ''}${esc(p.title)}</a>
         ${p.comments.length ? `<b class="cmt">[${p.comments.length}]</b>` : ''}${isNew(p) ? ' <i class="new">N</i>' : ''}
         ${p.location ? `<span class="loc">📍${esc(p.location)}</span>` : ''}</td>
-      <td class="writer"><span style="color:${a.color}">${esc(a.name)}</span></td>
+      <td class="writer"><span style="color:${a.color}">${esc(a.name)}</span>${p.partnerId ? ` <small class="heart">♥</small> <span style="color:${charById(p.partnerId)?.color || '#999'}">${esc(charById(p.partnerId)?.name || '?')}</span>` : ''}</td>
       <td class="day">${p.day}일째</td>
       <td class="date">${fmtTime(p.ts)}</td></tr>`;
   };
@@ -183,7 +185,7 @@ function postView(p) {
       <h2>${p.pinned ? '<span class="pin">공지</span> ' : ''}${esc(p.title)}</h2>
       <div class="post-author">
         ${authorAvatar(a, 46, p.spriteId)}
-        <div><b style="color:${a.color}">${esc(a.name)}</b> ${a.c ? `<small>${esc(a.c.talent)}</small>` : ''}
+        <div><b style="color:${a.color}">${esc(a.name)}</b> ${a.c ? `<small>${esc(a.c.talent)}</small>` : ''}${partnerHTML(p)}
           <div class="meta">${esc(a.sub)} · ${fmtTime(p.ts)} · ${p.day}일째${p.location ? ` · 📍${esc(p.location)}` : ''}${p.editedAt ? ' · 수정됨' : ''}</div></div>
         <div class="post-actions">
           ${canEdit ? `<a class="btn tiny ghost" href="#/edit/${p.id}">수정</a><button class="btn tiny ghost" data-del-post="${p.id}">삭제</button>` : ''}
@@ -256,13 +258,29 @@ function commentForm(p) {
   </form>`;
 }
 
+function partnerHTML(p) {
+  const pc = charById(p.partnerId);
+  if (!pc) return '';
+  const aff = store.state.affinity[[p.charId, p.partnerId].sort().join('|')];
+  return ` <span class="ft-with">♥ 함께한 상대 ${avatar(pc, 22)} <b style="color:${pc.color}">${esc(pc.name)}</b>${aff ? ` · ${hearts(aff.level)}` : ''}</span>`;
+}
+
+export function hearts(level) {
+  const max = store.state.freeTime.maxLevel;
+  return `<span class="hearts" title="친밀도 Lv.${level}/${max}">${'◆'.repeat(level)}<i>${'◇'.repeat(Math.max(0, max - level))}</i></span>`;
+}
+
 // ---------- 글쓰기 ----------
 function writeView(p, boardArg) {
   const s = store.state;
   const gm = isGM();
-  const board = p?.board || (BOARDS[boardArg] && boardArg !== 'all' ? boardArg : 'daily');
+  const board = p?.board || $('#wBoard')?.value || (BOARDS[boardArg] && boardArg !== 'all' ? boardArg : 'daily');
   const boards = Object.entries(BOARDS).filter(([k]) => k !== 'all' && (k !== 'notice' || gm));
-  const charId = $('#wAs')?.value ?? p?.charId ?? speakAs() ?? '';
+  const ft = board === 'freetime' && !p;
+  const pre = boardArg === 'freetime' ? ctx.args : [];
+  let charId = $('#wAs')?.value ?? pre[1] ?? p?.charId ?? speakAs() ?? '';
+  const ftChars = myChars().filter((x) => x.alive && (x.mine || gm));
+  if (ft && !ftChars.some((x) => x.id === charId)) charId = ftChars[0]?.id || '';
   const c = charById(charId);
   const spriteSel = $('#wSprite')?.value ?? p?.spriteId ?? (c ? lastSprite(c.id) : '');
   return `<div class="cafe-head"><h2>${p ? '글 수정' : '카페 글쓰기'}</h2></div>
@@ -272,13 +290,28 @@ function writeView(p, boardArg) {
       <select id="wLoc"><option value="">장소 선택 (선택)</option>${s.locations.map((l) => `<option ${l === p?.location ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
     </div>
     ${p ? '' : `<div class="row">
-      <label class="lbl">작성 캐릭터</label>${charSelectHTML('wAs', charId, { none: gm ? 'GM / 모노쿠마 이름 없이' : `${s.me.nickname} (OOC)` })}
+      <label class="lbl">작성 캐릭터</label>${ft ? charSelectHTML('wAs', charId, { chars: ftChars }) : charSelectHTML('wAs', charId, { none: gm ? 'GM / 모노쿠마 이름 없이' : `${s.me.nickname} (OOC)` })}
       ${c?.sprites?.length ? `<label class="lbl">표정</label><select id="wSprite"><option value="">(없음)</option>${c.sprites.map((x) => `<option value="${x.id}" ${x.id === spriteSel ? 'selected' : ''}>${esc(x.label)}</option>`).join('')}</select>` : ''}
     </div>`}
-    <input id="wTitle" maxlength="100" placeholder="제목을 입력해 주세요." value="${esc(p?.title || '')}">
-    <textarea id="wBody" rows="16" placeholder="${board === 'investigation' ? '어디를 어떻게 조사하는지 적어 주세요. GM이 댓글로 결과를 알려줍니다.' : '내용을 입력하세요.'}">${esc(p?.body || '')}</textarea>
-    <div class="row end"><a class="btn ghost small" href="${p ? `#/post/${p.id}` : `#/board/${board}`}">취소</a><button class="btn pink">${p ? '수정' : '등록'}</button></div>
+    ${ft ? freeTimeFields(charId, pre[2]) : ''}
+    <input id="wTitle" maxlength="100" placeholder="${ft ? '제목 (비우면 「A 와(과) B 의 자유시간」)' : '제목을 입력해 주세요.'}" value="${esc(p?.title || '')}">
+    <textarea id="wBody" rows="16" placeholder="${board === 'investigation' ? '어디를 어떻게 조사하는지 적어 주세요. GM이 댓글로 결과를 알려줍니다.' : ft ? '함께 무엇을 하며 시간을 보냈는지 적어 주세요. 상대 캐릭터의 플레이어가 댓글로 이어서 역극합니다.' : '내용을 입력하세요.'}">${esc(p?.body || '')}</textarea>
+    <div class="row end"><a class="btn ghost small" href="${p ? `#/post/${p.id}` : `#/board/${board}`}">취소</a><button class="btn pink">${p ? '수정' : ft ? '💞 자유시간 보내기 (티켓 1장)' : '등록'}</button></div>
   </form>`;
+}
+
+function freeTimeFields(charId, partnerPre) {
+  const c = charById(charId);
+  const others = store.state.characters.filter((x) => x.id !== charId && x.alive && !x.npc);
+  const sel = $('#wPartner')?.value ?? partnerPre ?? '';
+  const aff = (id) => store.state.affinity[[charId, id].sort().join('|')];
+  return `<div class="ft-box">
+    <div class="row wrap"><b>💞 자유시간</b><span>남은 티켓 <b class="tickets">${c?.tickets ?? 0}</b>장 (하루 ${store.state.freeTime.ticketsPerDay}장, 다음 날 충전)</span></div>
+    <div class="row wrap"><label class="lbl">함께할 상대</label><select id="wPartner"><option value="">선택…</option>${others
+      .map((x) => `<option value="${x.id}" ${x.id === sel ? 'selected' : ''}>${esc(x.name)} (Lv.${aff(x.id)?.level ?? 0})</option>`)
+      .join('')}</select></div>
+    <p class="hint">자유시간을 보내면 두 사람의 친밀도가 +${store.state.freeTime.eventPoints} 올라갑니다. 선물은 학생수첩 → 소지품에서 줄 수 있어요.</p>
+  </div>`;
 }
 
 // ---------- 이벤트 ----------
@@ -303,11 +336,17 @@ function bind(el, name, args) {
     if (as) as.onchange = () => (speakAs(as.value || null), refresh());
     const sp = $('#wSprite', el);
     if (sp) sp.onchange = () => lastSprite($('#wAs').value, sp.value);
+    const wb = $('#wBoard', el);
+    if (wb) wb.onchange = () => refresh();
     wf.onsubmit = async (e) => {
       e.preventDefault();
       const data = { title: $('#wTitle').value, body: $('#wBody').value, location: $('#wLoc').value };
       if (name === 'edit') {
         if (await emit('post:edit', { id: args[0], ...data })) location.hash = `#/post/${args[0]}`;
+      } else if ($('#wBoard').value === 'freetime') {
+        if (!$('#wPartner').value) return toast('함께할 상대를 고르세요.', 'error');
+        const res = await emit('freetime:start', { ...data, charId: $('#wAs').value, partnerId: $('#wPartner').value, spriteId: $('#wSprite')?.value || null });
+        if (res?.id) location.hash = `#/post/${res.id}`;
       } else {
         const res = await emit('post:create', { ...data, board: $('#wBoard').value, charId: $('#wAs')?.value || null, spriteId: $('#wSprite')?.value || null });
         if (res?.id) location.hash = `#/post/${res.id}`;

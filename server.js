@@ -16,7 +16,8 @@ const MAX_TRIAL_MESSAGES = 3000;
 const MAX_NOTICES = 300;
 const MAX_IMAGES = 600;
 const PHASES = { daily: '일상 파트', investigation: '조사 파트', trial: '학급재판', execution: '처형' };
-const BOARDS = ['notice', 'daily', 'investigation', 'free'];
+const BOARDS = ['notice', 'daily', 'investigation', 'freetime', 'free'];
+const FREE_TIME_DEFAULTS = { ticketsPerDay: 2, eventPoints: 3, levelPoints: 5, maxLevel: 5, giftPoints: 1, likedPoints: 3, dislikedPoints: -2 };
 const DEFAULT_LOCATIONS = ['교실', '식당', '주방', '체육관', '도서실', '기숙사', '정원', '수영장', '창고', '매점'];
 const DEFAULT_RULES = [
   '학생 여러분은 학원 안에서만 공동생활을 해야 합니다. 공동생활의 기한은 없습니다.',
@@ -44,7 +45,7 @@ const io = new Server(server, { maxHttpBufferSize: 5e6 });
 let rooms = {};
 try {
   const loaded = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-  for (const [code, r] of Object.entries(loaded)) if (r.version === VERSION) rooms[code] = r;
+  for (const [code, r] of Object.entries(loaded)) if (r.version === VERSION) rooms[code] = migrate(r);
 } catch {
   rooms = {};
 }
@@ -116,7 +117,21 @@ function createRoom(code, title) {
       items: DEFAULT_ITEMS.map(([name, desc, icon, price]) => ({ id: uid(), name, desc, icon, price, stock: null, gacha: true })),
     },
     trial: { messages: [], voting: false, revealed: false, votes: {} },
+    freeTime: { ...FREE_TIME_DEFAULTS },
+    affinity: {},
   };
+}
+
+// 예전 데이터에 새 필드 채우기
+function migrate(room) {
+  room.freeTime = { ...FREE_TIME_DEFAULTS, ...(room.freeTime || {}) };
+  room.affinity = room.affinity || {};
+  Object.values(room.characters || {}).forEach((c) => {
+    if (typeof c.tickets !== 'number') c.tickets = room.freeTime.ticketsPerDay;
+    c.likes = c.likes || '';
+    c.dislikes = c.dislikes || '';
+  });
+  return room;
 }
 
 // 이미지 값: 이 방에 업로드한 이미지 주소 또는 외부 http(s) URL만 허용
@@ -153,7 +168,7 @@ function publicState(room, pid) {
       sprites: c.sprites, skills: c.skills, alive: c.alive, npc: c.npc, mine: c.ownerId === pid,
     };
     if (own) {
-      Object.assign(v, { coins: c.coins, inventory: c.inventory, bullets: c.bullets });
+      Object.assign(v, { coins: c.coins, inventory: c.inventory, bullets: c.bullets, tickets: c.tickets, likes: c.likes, dislikes: c.dislikes });
       c.bullets.forEach((id) => visibleEvidence.add(id));
     }
     return v;
@@ -181,6 +196,12 @@ function publicState(room, pid) {
     posts: room.posts,
     notices: room.notices.filter((n) => canSeeChars(room, pid, n.charIds)).slice(-100),
     shop: room.shop,
+    freeTime: room.freeTime,
+    affinity: Object.fromEntries(
+      Object.entries(room.affinity)
+        .filter(([k]) => gm || canSeeChars(room, pid, k.split('|')))
+        .map(([k, v]) => [k, { ...v, level: affLevel(room, v.points) }])
+    ),
     trial: {
       voting: room.trial.voting,
       revealed: room.trial.revealed,
@@ -242,6 +263,38 @@ function grantItem(c, item, qty = 1) {
 
 function grantBullet(c, evId) {
   if (!c.bullets.includes(evId)) c.bullets.push(evId);
+}
+
+// ---------- 친밀도 ----------
+const pairKey = (a, b) => [a, b].sort().join('|');
+const affLevel = (room, points) => Math.max(0, Math.min(room.freeTime.maxLevel, Math.floor(points / room.freeTime.levelPoints)));
+
+// 두 캐릭터의 친밀도를 바꾸고, 레벨이 오르면 알림/연출
+function addAffinity(room, aId, bId, delta, { event = false } = {}) {
+  const a = room.characters[aId];
+  const b = room.characters[bId];
+  if (!a || !b || a === b) return;
+  const key = pairKey(aId, bId);
+  const rec = (room.affinity[key] = room.affinity[key] || { points: 0, events: 0 });
+  const before = affLevel(room, rec.points);
+  rec.points = Math.max(0, rec.points + delta);
+  if (event) rec.events += 1;
+  const after = affLevel(room, rec.points);
+  if (after > before) {
+    notice(room, `💗 ${a.name} 와(과) ${b.name} 의 친밀도가 Lv.${after} 이(가) 되었다! 희망의 조각을 손에 넣었다!`, [a.id, b.id], { kind: 'affinity' });
+    eachSocket(room, (s, pid) => canSeeChars(room, pid, [a.id, b.id]) && s.emit('splash', { kind: 'fragment', name: `${a.name} ♥ ${b.name}`, level: after, max: room.freeTime.maxLevel }));
+  } else if (after < before) {
+    notice(room, `💔 ${a.name} 와(과) ${b.name} 의 친밀도가 Lv.${after} (으)로 내려갔다…`, [a.id, b.id], { kind: 'affinity' });
+  }
+}
+
+// 선물 반응: 받는 캐릭터의 좋아하는 것/싫어하는 것 키워드와 아이템 이름 비교
+function giftReaction(to, itemName) {
+  const match = (list) =>
+    list.split(/[,\n]/).map((k) => k.trim()).filter(Boolean).some((k) => itemName.includes(k) || k.includes(itemName));
+  if (match(to.likes || '')) return 'liked';
+  if (match(to.dislikes || '')) return 'disliked';
+  return 'normal';
 }
 
 const charNames = (room, ids) => ids.map((id) => room.characters[id]?.name).filter(Boolean).join(', ');
@@ -399,6 +452,8 @@ io.on('connection', (socket) => {
       color: /^#[0-9a-fA-F]{6}$/.test(d.color) ? d.color : '#ff3e8a',
       profile: str(d.profile, 3000),
       sprites: sanitizeSprites(room, d.sprites),
+      likes: str(d.likes, 300),
+      dislikes: str(d.dislikes, 300),
     };
     let c = d.id && room.characters[d.id];
     if (c) {
@@ -407,7 +462,7 @@ io.on('connection', (socket) => {
     } else {
       c = {
         id: uid(), ownerId: pid, ...fields, skills: sanitizeSkills(d.skills),
-        alive: true, npc: !!d.npc && isGM(), coins: 0, inventory: [], bullets: [], createdAt: Date.now(),
+        alive: true, npc: !!d.npc && isGM(), coins: 0, inventory: [], bullets: [], tickets: room.freeTime.ticketsPerDay, createdAt: Date.now(),
       };
       room.characters[c.id] = c;
       if (!c.npc) notice(room, `새 학생 「${c.name}」(${c.talent || '재능 미상'}) 이(가) 입학했습니다.`);
@@ -420,6 +475,7 @@ io.on('connection', (socket) => {
     if (!ownChar(id)) return reply({ error: '권한이 없습니다.' });
     delete room.characters[id];
     delete room.trial.votes[id];
+    Object.keys(room.affinity).forEach((k) => k.split('|').includes(id) && delete room.affinity[k]);
     broadcast(room);
     reply({ ok: true });
   });
@@ -453,6 +509,7 @@ io.on('connection', (socket) => {
   on('post:create', (d, reply) => {
     const board = BOARDS.includes(d.board) ? d.board : 'daily';
     if (board === 'notice' && !isGM()) return reply({ error: '공지는 GM만 쓸 수 있습니다.' });
+    if (board === 'freetime') return reply({ error: '자유시간은 「자유시간 보내기」로 시작해 주세요.' });
     const title = str(d.title, 100).trim();
     const body = str(d.body, 20000);
     if (!title) return reply({ error: '제목을 입력하세요.' });
@@ -637,9 +694,14 @@ io.on('connection', (socket) => {
     const it = takeItem(from, invId);
     if (!it) return reply({ error: '아이템이 없습니다.' });
     grantItem(to, it);
-    notice(room, `🎁 ${from.name} 이(가) ${to.name} 에게 「${it.name}」 을(를) 선물했다!`, [], { kind: 'gift' });
+    const reaction = giftReaction(to, it.name);
+    const ft = room.freeTime;
+    const pts = { liked: ft.likedPoints, disliked: ft.dislikedPoints, normal: ft.giftPoints }[reaction];
+    const line = { liked: '정말 기뻐하는 것 같다! ♥', disliked: '어쩐지 곤란해하는 것 같다…', normal: '고맙게 받아 주었다.' }[reaction];
+    notice(room, `🎁 ${from.name} 이(가) ${to.name} 에게 「${it.name}」 을(를) 선물했다! — ${line}`, [], { kind: 'gift' });
+    if (!to.npc && !from.npc) addAffinity(room, from.id, to.id, pts);
     broadcast(room);
-    reply({ ok: true });
+    reply({ ok: true, reaction });
   });
 
   on('item:use', ({ charId, invId }, reply) => {
@@ -662,6 +724,63 @@ io.on('connection', (socket) => {
       notice(room, `${charNames(room, targets)} — 아이템 「${name}」 을(를) 얻었다!`, targets, { kind: 'item' });
       broadcast(room);
       reply({ ok: true });
+    },
+    { gm: true }
+  );
+
+  // ---------- 자유시간 / 친밀도 ----------
+  // 티켓 1장으로 상대와 자유시간 → 자유시간 게시판에 두 사람의 글이 생기고 친밀도 상승
+  on('freetime:start', (d, reply) => {
+    const c = ownChar(d.charId);
+    const partner = room.characters[d.partnerId];
+    if (!c || !partner || c === partner) return reply({ error: '함께할 상대를 고르세요.' });
+    if (!c.alive || !partner.alive) return reply({ error: '세상을 떠난 학생과는 자유시간을 보낼 수 없습니다.' });
+    if (c.tickets <= 0 && !isGM()) return reply({ error: '오늘의 자유시간 티켓을 모두 썼습니다.' });
+    const title = str(d.title, 100).trim() || `${c.name} 와(과) ${partner.name} 의 자유시간`;
+    c.tickets = Math.max(0, c.tickets - 1);
+    const post = {
+      id: uid(), no: ++room.postSeq, board: 'freetime', day: room.day, location: str(d.location, 40),
+      charId: c.id, partnerId: partner.id, spriteId: str(d.spriteId, 20) || null, authorId: pid,
+      title, body: str(d.body, 20000), ts: Date.now(), editedAt: null, pinned: false, comments: [],
+    };
+    room.posts.push(post);
+    notice(room, `💞 ${c.name} 이(가) ${partner.name} 와(과) 자유시간을 보냈다.`, [], { kind: 'affinity' });
+    if (!c.npc && !partner.npc) addAffinity(room, c.id, partner.id, room.freeTime.eventPoints, { event: true });
+    broadcast(room);
+    reply({ id: post.id });
+  });
+
+  on(
+    'gm:affinity',
+    ({ a, b, delta }) => {
+      addAffinity(room, a, b, int(delta, 0, -999, 999));
+      broadcast(room);
+    },
+    { gm: true }
+  );
+
+  on(
+    'gm:tickets',
+    ({ charId, delta, refill }) => {
+      if (refill) Object.values(room.characters).forEach((c) => (c.tickets = room.freeTime.ticketsPerDay));
+      else if (room.characters[charId]) room.characters[charId].tickets = Math.max(0, room.characters[charId].tickets + int(delta, 0, -99, 99));
+      broadcast(room);
+    },
+    { gm: true }
+  );
+
+  on(
+    'gm:freetime',
+    (d) => {
+      const ft = room.freeTime;
+      ft.ticketsPerDay = int(d.ticketsPerDay, ft.ticketsPerDay, 0, 20);
+      ft.eventPoints = int(d.eventPoints, ft.eventPoints, 0, 100);
+      ft.levelPoints = int(d.levelPoints, ft.levelPoints, 1, 100);
+      ft.maxLevel = int(d.maxLevel, ft.maxLevel, 1, 10);
+      ft.giftPoints = int(d.giftPoints, ft.giftPoints, -50, 50);
+      ft.likedPoints = int(d.likedPoints, ft.likedPoints, -50, 50);
+      ft.dislikedPoints = int(d.dislikedPoints, ft.dislikedPoints, -50, 50);
+      broadcast(room);
     },
     { gm: true }
   );
@@ -902,7 +1021,8 @@ io.on('connection', (socket) => {
     'gm:day',
     ({ delta }) => {
       room.day = Math.max(1, room.day + (delta > 0 ? 1 : -1));
-      notice(room, `── ${room.day}일째 ──`, [], { kind: 'phase' });
+      if (delta > 0) Object.values(room.characters).forEach((c) => (c.tickets = room.freeTime.ticketsPerDay));
+      notice(room, `── ${room.day}일째 ──${delta > 0 ? ' 자유시간 티켓이 충전되었습니다.' : ''}`, [], { kind: 'phase' });
       broadcast(room);
     },
     { gm: true }
@@ -978,7 +1098,7 @@ io.on('connection', (socket) => {
         next = JSON.parse(JSON.stringify(next).split(`/img/${data.code}/`).join(`/img/${room.code}/`));
       }
       Object.keys(room).forEach((k) => delete room[k]);
-      Object.assign(room, next);
+      Object.assign(room, migrate(next));
       // 주인 계정이 없는 캐릭터는 현재 GM 소유로
       Object.values(room.characters).forEach((c) => !room.players[c.ownerId] && (c.ownerId = room.gmId));
       eachSocket(room, (s, id) => s.emit('trial:log', room.trial.messages.map((m) => trialMsgView(m, id === room.gmId))));

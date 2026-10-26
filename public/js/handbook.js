@@ -1,13 +1,14 @@
 // 전자학생수첩: 학생 명부 / 내 캐릭터(메달·스킬·언령·소지품) / 교칙 / 지도 / 알림
 import { $, $$, esc, emit, store, render as paint, modal, isGM, charById, myChars, evidenceById, avatar, charSelectHTML, fmtTime } from './core.js';
 import { openEditor, openProfile, charCard, bindCards } from './chars.js';
+import { hearts } from './board.js';
 
-const TABS = { roster: '학생 명부', me: '내 캐릭터', rules: '교칙', map: '지도', notices: '알림' };
+const TABS = { roster: '학생 명부', me: '내 캐릭터', report: '통신부', rules: '교칙', map: '지도', notices: '알림' };
 
 export function render(el, name, args, what) {
   if (what && what.startsWith('trial')) return;
   const tab = TABS[args[0]] ? args[0] : 'roster';
-  const body = { roster, me, rules, map, notices }[tab](args);
+  const body = { roster, me, report, rules, map, notices }[tab](args);
   render2(el, tab, body);
   bind(el, tab, args);
 }
@@ -45,7 +46,9 @@ function me(args) {
     <div class="me-head" style="--c:${c.color}">
       ${avatar(c, 92)}
       <div class="grow"><div class="talent">${esc(c.talent || '초고교급 ???')}</div><h2 style="color:${c.color}">${esc(c.name)}${c.alive ? '' : ' <small class="dead-text">사망</small>'}</h2>
-        <div class="coins">🪙 모노쿠마 메달 <b>${c.coins ?? 0}</b> <a href="#/shop" class="btn tiny">매점 가기</a></div></div>
+        <div class="coins">🪙 모노쿠마 메달 <b>${c.coins ?? 0}</b> <a href="#/shop" class="btn tiny">매점 가기</a>
+          <span class="ticket-count">💞 자유시간 티켓 <b>${c.tickets ?? 0}</b></span> <a href="#/handbook/report/${c.id}" class="btn tiny">통신부</a></div>
+        ${c.likes || c.dislikes ? `<div class="likes">${c.likes ? `<span>💗 좋아하는 것: ${esc(c.likes)}</span>` : ''}${c.dislikes ? `<span>💢 싫어하는 것: ${esc(c.dislikes)}</span>` : ''}</div>` : ''}</div>
       <div class="stack"><button class="btn small" data-profile-open="${c.id}">프로필</button><button class="btn small pink" data-edit="${c.id}">수정</button></div>
     </div>
     <div class="me-grid">
@@ -65,6 +68,42 @@ function me(args) {
           <div class="stack"><button class="btn tiny" data-give="${i.id}">선물</button><button class="btn tiny ghost" data-use="${i.id}">사용</button></div></div>`).join('') || '<p class="hint">소지품이 없습니다. 매점이나 모노모노 머신에서 얻을 수 있어요.</p>'}</div>
       </section>
     </div>`;
+}
+
+// 통신부: 내 캐릭터와 다른 학생들의 친밀도
+function report(args) {
+  const chars = myChars().filter((c) => (c.mine || isGM()) && !c.npc);
+  if (!chars.length) return `<div class="empty-me"><p>아직 캐릭터가 없습니다.</p><button class="btn pink" data-new>+ 첫 캐릭터 만들기</button></div>`;
+  const c = chars.find((x) => x.id === args[1]) || chars.find((x) => x.mine) || chars[0];
+  const s = store.state;
+  const ft = s.freeTime;
+  const others = s.characters.filter((x) => x.id !== c.id && !x.npc);
+  const rows = others
+    .map((o) => ({ o, a: s.affinity[[c.id, o.id].sort().join('|')] || { points: 0, events: 0, level: 0 } }))
+    .sort((x, y) => y.a.points - x.a.points);
+  const fragments = rows.reduce((n, r) => n + r.a.level, 0);
+  return `<div class="char-chips">${chars.map((x) => `<a href="#/handbook/report/${x.id}" class="chip ${x.id === c.id ? 'active' : ''}" style="--c:${x.color}">${avatar(x, 26)} ${esc(x.name)}</a>`).join('')}</div>
+    <div class="report-head" style="--c:${c.color}">
+      ${avatar(c, 64)}
+      <div class="grow"><div class="talent">통신부</div><h2 style="color:${c.color}">${esc(c.name)}</h2>
+        <div>희망의 조각 <b class="frag">${fragments}</b>개 · 💞 남은 자유시간 티켓 <b class="tickets">${c.tickets ?? 0}</b>장</div></div>
+    </div>
+    <p class="hint">자유시간 1회 +${ft.eventPoints} · 선물 +${ft.giftPoints} (좋아하는 선물 ${ft.likedPoints >= 0 ? '+' : ''}${ft.likedPoints}, 싫어하는 선물 ${ft.dislikedPoints}) · ${ft.levelPoints}점마다 Lv 1 (최대 Lv.${ft.maxLevel})</p>
+    <div class="report-list">${rows
+      .map(({ o, a }) => {
+        const maxed = a.level >= ft.maxLevel;
+        const prog = maxed ? 100 : ((a.points % ft.levelPoints) / ft.levelPoints) * 100;
+        return `<div class="report-row ${o.alive ? '' : 'dead'}" style="--c:${o.color}">
+          <button class="link" data-profile="${o.id}">${avatar(o, 48)}</button>
+          <div class="grow"><b style="color:${o.color}">${esc(o.name)}</b> <small>${esc(o.talent)}</small>${o.alive ? '' : ' <small class="dead-text">사망</small>'}
+            <div class="row">${hearts(a.level)} <small>Lv.${a.level} · ${a.points}점 · 자유시간 ${a.events}회</small></div>
+            <div class="aff-bar"><i style="width:${prog}%"></i></div></div>
+          <div class="stack">
+            ${o.alive && c.alive ? `<a class="btn tiny pink" href="#/write/freetime/${c.id}/${o.id}">💞 자유시간</a>` : ''}
+            <button class="btn tiny" data-gift-to="${o.id}">🎁 선물</button>
+          </div></div>`;
+      })
+      .join('') || '<p class="hint">다른 학생이 아직 없습니다.</p>'}</div>`;
 }
 
 function rules() {
@@ -99,7 +138,23 @@ function bind(el, tab, args) {
     (b) => (b.onclick = () => confirm('이 아이템을 사용할까요? (1개 소모)') && emit('item:use', { charId, invId: b.dataset.use }))
   );
   $$('[data-give]', el).forEach((b) => (b.onclick = () => pickTarget('누구에게 선물할까요?', charId, (toId) => emit('item:give', { fromId: charId, toId, invId: b.dataset.give }))));
+  const reportChar = tab === 'report' ? $('.chip.active', el)?.getAttribute('href')?.split('/').pop() : null;
+  $$('[data-gift-to]', el).forEach((b) => (b.onclick = () => pickGift(reportChar, b.dataset.giftTo)));
   $$('[data-share]', el).forEach((b) => (b.onclick = () => pickTarget('누구에게 언령을 공유할까요?', charId, (toId) => emit('evidence:share', { fromId: charId, toId, id: b.dataset.share }))));
+}
+
+function pickGift(fromId, toId) {
+  const from = charById(fromId);
+  const to = charById(toId);
+  if (!from?.inventory?.length) return alert(`${from?.name}의 소지품이 없습니다. 매점에서 선물을 사 보세요.`);
+  const d = modal(`<h2>🎁 ${esc(to.name)}에게 선물</h2>
+    <p class="hint">무엇을 좋아할지는 직접 알아내 보세요…!</p>
+    <div class="gift-pick">${from.inventory.map((i, n) => `<label class="bullet-opt"><input type="radio" name="gift" value="${i.id}" ${n === 0 ? 'checked' : ''}><span class="icon">${esc(i.icon)}</span><div><b>${esc(i.name)}</b>${i.qty > 1 ? ` ×${i.qty}` : ''}<span>${esc(i.desc)}</span></div></label>`).join('')}</div>
+    <div class="row end"><button class="btn small pink" id="giftOk">선물하기</button></div>`);
+  $('#giftOk', d).onclick = async () => {
+    const invId = $('input[name=gift]:checked', d)?.value;
+    if (invId && (await emit('item:give', { fromId, toId, invId }))) d.close();
+  };
 }
 
 function pickTarget(title, fromId, fn) {

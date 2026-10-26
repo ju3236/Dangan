@@ -163,7 +163,7 @@ function renderTop() {
 
 // ---------- 연출 ----------
 let splashTimer = null;
-function showSplash({ kind, name, color, skill, text }) {
+function showSplash({ kind, name, color, skill, text, level, max }) {
   const n = name ? `<small>${esc(name)}</small>` : '';
   const words = {
     refute: `${n}그건 틀렸어!`,
@@ -179,13 +179,14 @@ function showSplash({ kind, name, color, skill, text }) {
     result: '<small>VOTE RESULT</small>투표 결과',
     skill: `${n}〈${esc(skill)}〉<small>SKILL</small>`,
     announce: `<small>📺 모노쿠마 방송</small><span class="announce-text">${esc(text)}</span>`,
+    fragment: `<small>${esc(name)}</small>희망의 조각<small>친밀도 Lv.${esc(level)} / ${esc(max)}</small>`,
   };
   if (!words[kind]) return;
   const el = $('#splash');
   el.className = 'splash ' + kind;
   el.innerHTML = `<div class="word" ${color ? `style="--sc:${esc(color)}"` : ''}>${words[kind]}</div>`;
   clearTimeout(splashTimer);
-  const ms = { break: 1300, miss: 1100, announce: 3200 }[kind] || 1800;
+  const ms = { break: 1300, miss: 1100, announce: 3200, fragment: 2400 }[kind] || 1800;
   splashTimer = setTimeout(() => el.classList.add('hidden'), ms);
 }
 $('#splash').onclick = () => $('#splash').classList.add('hidden');
