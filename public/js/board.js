@@ -58,7 +58,10 @@ function markSeen(p) {
 function authorOf(item) {
   const c = charById(item.charId);
   if (c) return { c, name: c.name, sub: playerById(item.authorId)?.nickname || '', color: c.color };
-  if (item.monokuma) return { c: null, name: '모노쿠마', sub: '학원장', color: '#ffffff', monokuma: true };
+  if (item.monokuma) return { c: null, name: item.displayName || '모노쿠마', sub: '학원장', color: '#222222', monokuma: true };
+  // 카페에서 가져온 글: 캐릭터와 이어지지 않은 이름은 그대로 보여 준다
+  if (item.displayName && !item.gm) return { c: null, name: item.displayName, sub: '카페', color: '#9a8fa6' };
+  if (item.displayName) return { c: null, name: item.displayName, sub: 'GM', color: '#ffcf3a', gm: true };
   const p = playerById(item.authorId);
   const gm = item.gm || (p?.isGM && !item.charId);
   return { c: null, name: p?.nickname || '(알 수 없음)', sub: gm ? 'GM' : 'OOC', color: gm ? '#ffcf3a' : '#9a8fa6', gm };
@@ -210,7 +213,7 @@ function commentHTML(p, c, reply = false) {
   return `<div class="comment ${reply ? 'reply' : ''} ${a.gm ? 'gm' : ''} ${replyTo === c.id ? 'replying' : ''}">
     ${authorAvatar(a, reply ? 34 : 40, c.spriteId)}
     <div class="c-main">
-      <div class="c-who"><b style="color:${a.color}">${esc(a.name)}</b>${a.gm ? ' <b class="gm-badge">GM</b>' : a.c ? ` <small>${esc(a.sub)}</small>` : ' <small>OOC</small>'}
+      <div class="c-who"><b style="color:${a.color}">${esc(a.name)}</b>${a.gm ? ' <b class="gm-badge">GM</b>' : a.c || a.monokuma || c.displayName ? ` <small>${esc(a.sub)}</small>` : ' <small>OOC</small>'}
         ${p.authorId === c.authorId && p.charId === c.charId ? '<span class="writer-badge">작성자</span>' : ''}</div>
       ${c.body ? `<div class="c-body">${mentionHTML(esc(c.body))}</div>` : ''}
       ${c.grants?.length ? `<div class="grants">${c.grants.map((g) => `<span class="grant ${g.type}">${g.type === 'bullet' ? '⚡' : g.type === 'coin' ? '🪙' : ''} ${esc(g.label)} → ${esc(g.charIds.map((id) => charById(id)?.name || '?').join(', '))}</span>`).join('')}</div>` : ''}

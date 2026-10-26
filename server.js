@@ -838,6 +838,52 @@ io.on('connection', (socket) => {
     reply({ id: post.id });
   });
 
+  // 네이버 카페 글 가져오기 (GM). 같은 글(제목+작성 시각)을 다시 가져오면 새 댓글만 이어 붙인다
+  on(
+    'gm:importCafe',
+    (d, reply) => {
+      const title = str(d.title, 100).trim();
+      if (!title) return reply({ error: '제목이 없습니다.' });
+      const maxTs = Date.now() + 86400000;
+      const ts = int(d.ts, Date.now(), 0, maxTs);
+      const who = (x) => {
+        const c = x?.charId && room.characters[x.charId];
+        if (c) return { charId: c.id, authorId: c.ownerId, monokuma: false, gm: false, displayName: null };
+        return { charId: null, authorId: pid, monokuma: !!x?.monokuma, gm: !!x?.gm, displayName: str(x?.displayName, 40).trim() || null };
+      };
+      snapshot(room, 'before-cafe-import');
+      const key = `${title}|${ts}`;
+      let post = room.posts.find((p) => p.cafeKey === key);
+      const created = !post;
+      if (!post) {
+        post = {
+          id: uid(), no: ++room.postSeq, board: BOARDS.includes(d.board) && d.board !== 'freetime' ? d.board : 'daily',
+          day: int(d.day, room.day, 1, 9999), location: str(d.location, 40), spriteId: null, ...who(d.author),
+          title, body: str(d.body, 20000), ts, editedAt: null, pinned: false, comments: [],
+          cafeKey: key, cafeChapter: d.chapter ? int(d.chapter, 1, 1, 99) : null,
+        };
+        room.posts.push(post);
+        room.posts.sort((a, b) => a.ts - b.ts);
+      }
+      const seen = new Set(post.comments.map((c) => `${c.ts}|${c.charId || c.displayName}|${c.body}`));
+      let added = 0;
+      for (const x of arr(d.comments, 3000)) {
+        const a = who(x);
+        const body = str(x?.body, 5000).trim() || '(이미지·스티커)';
+        const cts = int(x?.ts, ts, 0, maxTs);
+        const k = `${cts}|${a.charId || a.displayName}|${body}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        post.comments.push({ id: uid(), parentId: null, ...a, spriteId: null, body, grants: [], ts: cts });
+        added++;
+      }
+      post.comments.sort((a, b) => a.ts - b.ts);
+      broadcast(room);
+      reply({ id: post.id, created, added });
+    },
+    { gm: true }
+  );
+
   on('post:edit', (d, reply) => {
     const post = room.posts.find((p) => p.id === d.id);
     if (!post || (post.authorId !== pid && !isGM())) return reply({ error: '권한이 없습니다.' });

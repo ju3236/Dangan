@@ -3,13 +3,14 @@ import { $, $$, esc, emit, store, render as paint, toast, modal, isGM, charById,
 import { openEditor, openProfile } from './chars.js';
 import { renderCase, gmNav } from './casefile.js';
 import { soundAdminHTML, bindSoundAdmin } from './audio.js';
+import { cafeImportHTML, bindCafeImport } from './cafeimport.js';
 
 let shopRows = null; // 편집 중인 매점 상품 id 목록 (null이면 서버 상태 그대로)
 let backups = null; // 자동 백업 목록 (열었을 때만 불러온다)
 let editingLore = null; // 수정 중인 지난 이야기 id
 const BACKUP_REASON = {
   auto: '자동', manual: '직접', 'before-import': '불러오기 직전', 'before-restore': '되돌리기 직전',
-  'before-clear': '재판 로그 비우기 직전', 'before-case-delete': '사건 삭제 직전', 'before-char-delete': '캐릭터 삭제 직전',
+  'before-clear': '재판 로그 비우기 직전', 'before-case-delete': '사건 삭제 직전', 'before-char-delete': '캐릭터 삭제 직전', 'before-cafe-import': '카페 글 가져오기 직전',
 };
 
 export function render(el, name, args, what) {
@@ -147,6 +148,8 @@ export function render(el, name, args, what) {
       </div>
     </section>
 
+    ${cafeImportHTML()}
+
     <section class="gm-card"><h2>🎵 사운드</h2>${soundAdminHTML()}</section>
 
     <section class="gm-card"><h2>플레이어</h2>
@@ -210,6 +213,7 @@ function openMotive() {
 
 function bind(el) {
   bindSoundAdmin(el);
+  bindCafeImport(el);
   const on = (id, fn) => {
     const b = $('#' + id, el);
     if (b) b.onclick = fn;

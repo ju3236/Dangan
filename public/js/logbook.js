@@ -8,6 +8,10 @@ function chapters() {
   const ends = store.trial.filter((m) => m.type === 'phase' && m.phase === 'execution').map((m) => m.ts);
   const first = store.state.chapterStart || 1; // 카페 등에서 앞 챕터를 했다면 그다음 번호부터
   const list = (store.state.lore || []).map((l) => ({ id: 'lore:' + l.id, label: `📚 ${l.title}`, lore: l }));
+  // 카페에서 가져온 글은 카페 챕터별로 따로 묶는다
+  [...new Set(store.state.posts.map((p) => p.cafeChapter).filter(Boolean))]
+    .sort((a, b) => a - b)
+    .forEach((n) => list.push({ id: 'cafe:' + n, label: `☕ 카페 제${n}장`, cafe: n, start: 0, end: Infinity }));
   let start = 0;
   ends.forEach((end, i) => {
     list.push({ id: String(i + 1), label: `제${first + i}장`, start, end: end + 15 * 60000 }); // 처형 연출 직후까지
@@ -25,9 +29,10 @@ function collect(range, opts) {
   const items = [];
   if (opts.board)
     store.state.posts
+      .filter((p) => (range.cafe ? p.cafeChapter === range.cafe : range.all || !p.cafeChapter))
       .filter((p) => p.ts >= range.start && p.ts < range.end && (opts.ooc || p.board !== 'free'))
       .forEach((p) => items.push({ ts: p.ts, kind: 'post', p }));
-  if (opts.trial) {
+  if (opts.trial && !range.cafe) {
     let block = null;
     store.trial
       .filter((m) => m.ts >= range.start && m.ts < range.end && (opts.ooc || m.type !== 'ooc'))
@@ -71,9 +76,9 @@ function itemsHTML(items) {
         return `${head}<article class="lb-post">
           <div class="lb-meta">[${BOARD[p.board] || p.board}]${p.location ? ` 📍${esc(p.location)}` : ''}</div>
           <h4>${esc(p.title)}</h4>
-          <div class="lb-author">${esc(nameOf(p.charId, p.authorId, p.monokuma ? '모노쿠마' : null))}${partner ? ` ♥ ${esc(partner.name)}` : ''}</div>
+          <div class="lb-author">${esc(nameOf(p.charId, p.authorId, p.displayName || (p.monokuma ? '모노쿠마' : null)))}${partner ? ` ♥ ${esc(partner.name)}` : ''}</div>
           <div class="lb-body">${esc(p.body).replace(/\n/g, '<br>')}</div>
-          ${p.comments.map((c) => `<div class="lb-cmt ${c.parentId ? 'reply' : ''}"><b>${esc(nameOf(c.charId, c.authorId, c.gm ? 'GM' : null))}</b> ${esc(c.body).replace(/\n/g, '<br>')}${c.grants?.length ? ` <i>(${esc(c.grants.map((g) => g.label).join(', '))})</i>` : ''}</div>`).join('')}
+          ${p.comments.map((c) => `<div class="lb-cmt ${c.parentId ? 'reply' : ''}"><b>${esc(nameOf(c.charId, c.authorId, c.displayName || (c.gm ? 'GM' : null)))}</b> ${esc(c.body).replace(/\n/g, '<br>')}${c.grants?.length ? ` <i>(${esc(c.grants.map((g) => g.label).join(', '))})</i>` : ''}</div>`).join('')}
         </article>`;
       }
       return `<section class="lb-trial"><h3 class="lb-day">⚖️ 학급재판</h3>${it.msgs.map(trialLine).join('')}</section>`;
@@ -86,7 +91,7 @@ const loreHTML = (l) => `<div class="lb-lore">${esc(l.text)}</div>`;
 function current() {
   const list = chapters();
   const sel = $('#lbRange')?.value || list[list.length - 1].id;
-  const range = sel === 'all' ? { start: 0, end: Infinity, label: '전체' } : list.find((c) => c.id === sel) || list[list.length - 1];
+  const range = sel === 'all' ? { start: 0, end: Infinity, label: '전체', all: true } : list.find((c) => c.id === sel) || list[list.length - 1];
   const opts = { board: $('#lbBoard')?.checked ?? true, trial: $('#lbTrial')?.checked ?? true, ooc: $('#lbOoc')?.checked ?? false };
   return { list, sel, range, opts, items: range.lore ? [] : collect(range, opts) };
 }
@@ -121,7 +126,7 @@ export function bindLogbook(el, rerender) {
   const { sel, range, items } = current();
   const title = `${store.state.title} — ${range.label}`;
   // 파일 이름은 영문으로 (브라우저에 따라 한글 이름이 'download'로 바뀌는 경우가 있어서)
-  const file = `dangan-${store.state.code}-logbook-${sel === 'all' ? 'all' : range.lore ? 'story' : 'ch' + sel}`;
+  const file = `dangan-${store.state.code}-logbook-${sel === 'all' ? 'all' : range.lore ? 'story' : range.cafe ? 'cafe-ch' + range.cafe : 'ch' + sel}`;
   const h = $('#lbHtml', el);
   if (h)
     h.onclick = () =>

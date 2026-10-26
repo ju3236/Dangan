@@ -151,9 +151,9 @@ function buildContext(room, { victimId, culpritId, difficulty, notes }) {
   if (posts.length) {
     lines.push('\n## 최근 역극 기록 (오래된 순)');
     for (const p of posts) {
-      const who = [p.charId, p.partnerId].filter(Boolean).map(name).join(' & ') || 'GM';
+      const who = [p.charId, p.partnerId].filter(Boolean).map(name).join(' & ') || p.displayName || 'GM';
       lines.push(`### [${p.day}일째${p.location ? ` · ${p.location}` : ''}] ${p.title} — ${who}\n${cut(p.body, 500)}`);
-      for (const c of p.comments.slice(0, 8)) lines.push(`  └ ${c.charId ? name(c.charId) : 'GM'}: ${cut(c.body, 160).replace(/\n/g, ' ')}`);
+      for (const c of p.comments.slice(0, 8)) lines.push(`  └ ${c.charId ? name(c.charId) : c.displayName || 'GM'}: ${cut(c.body, 160).replace(/\n/g, ' ')}`);
     }
   }
   const chapter = (room.chapterStart || 1) + (room.cases || []).filter((c) => c.file && c.status === 'closed').length;
