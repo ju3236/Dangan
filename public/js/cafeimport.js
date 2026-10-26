@@ -3,7 +3,7 @@ import { $, esc, emit, store, toast, fmtTime } from './core.js';
 
 const NOISE = new Set([
   '인기멤버', '구독', '구독 중', '구독중', '1:1 채팅', '이 멤버의 글을 구독탭에서 볼 수 있습니다.', '매니저', '부매니저', '스탭',
-  '이동삭제', '이전글', '다음글', '목록', '작성자', '답글쓰기', '신고', '새로고침',
+  '이동삭제', '이전글', '다음글', '목록', '작성자', '답글쓰기', '신고', '새로고침', '프로필 사진', '프로필사진',
 ]);
 const POST_DATE = /^(\d{4})\.(\d{1,2})\.(\d{1,2})\.\s*(\d{1,2}):(\d{2})\s*조회/;
 const CMT_DATE = /^(\d{4})\.(\d{1,2})\.(\d{1,2})\.\s*(\d{1,2}):(\d{2})\s*(답글쓰기)?$/;
@@ -65,7 +65,7 @@ export function parseCafe(raw) {
   post.comments = blocks.map((b) => {
     let text = b.text.join('\n');
     let replyTo = null;
-    const n = names.find((x) => text.startsWith(x + ' ') || text === x);
+    const n = names.find((x) => text.startsWith(x + ' ') || text.startsWith(x + '\n') || text === x);
     if (n) {
       replyTo = n;
       text = text.slice(n.length).trim();

@@ -50,8 +50,18 @@ const io = new Server(server, { maxHttpBufferSize: 5e6 });
 let rooms = {};
 try {
   const loaded = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-  for (const [code, r] of Object.entries(loaded)) if (r.version === VERSION) rooms[code] = migrate(r);
-} catch {
+  for (const [code, r] of Object.entries(loaded)) {
+    if (r.version !== VERSION) continue;
+    try {
+      rooms[code] = migrate(r);
+    } catch (e) {
+      // 한 방의 정리 작업이 실패해도 그 방을 버리지 않는다
+      console.error(`방 ${code} 정리 중 오류 (원본 그대로 불러옴):`, e);
+      rooms[code] = r;
+    }
+  }
+} catch (e) {
+  if (e.code !== 'ENOENT') console.error('저장 파일을 읽지 못했습니다:', e);
   rooms = {};
 }
 
@@ -285,7 +295,34 @@ function createRoom(code, title) {
 }
 
 // 예전 데이터에 새 필드 채우기
+// 카페 글 가져오기 초기 버전에서 댓글 작성자가 「프로필 사진」(카페 프로필 이미지의 대체 글자)으로 들어간 것을 바로잡는다
+function fixCafeComments(room) {
+  const CAFE_MONOKUMA = ['모노쿠마', '모노치라', '모노븅', '키보가미네 학원'];
+  const norm = (n) => String(n || '').replace(/\s+/g, '').toLowerCase();
+  const byName = new Map(Object.values(room.characters || {}).map((c) => [norm(c.name), c]));
+  byName.set('브이', byName.get('v'));
+  for (const post of room.posts || []) {
+    if (!post.cafeKey) continue;
+    const bad = post.comments.filter((c) => c.displayName === '프로필 사진' && !c.charId);
+    if (!bad.length) continue;
+    const firstLine = (c) => c.body.split('\n')[0].trim();
+    const names = [...new Set(bad.map(firstLine))].sort((a, b) => b.length - a.length);
+    for (const c of bad) {
+      const name = firstLine(c);
+      let body = c.body.split('\n').slice(1).join('\n').trim();
+      const to = names.find((n) => body.startsWith(n + ' ') || body.startsWith(n + '\n') || body === n);
+      if (to) body = `@${byName.get(norm(to))?.name || to} ${body.slice(to.length).trim()}`;
+      const ch = byName.get(norm(name));
+      Object.assign(c, { body: body || '(이미지·스티커)', charId: null, monokuma: false, gm: false, displayName: name });
+      if (ch) Object.assign(c, { charId: ch.id, authorId: ch.ownerId, displayName: null });
+      else if (name === 'SYSTEM') c.gm = true;
+      else if (CAFE_MONOKUMA.includes(name)) c.monokuma = true;
+    }
+  }
+}
+
 function migrate(room) {
+  fixCafeComments(room);
   if (!Array.isArray(room.gmIds)) room.gmIds = room.gmId ? [room.gmId] : [];
   delete room.gmId;
   room.freeTime = { ...FREE_TIME_DEFAULTS, ...(room.freeTime || {}) };
