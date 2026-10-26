@@ -11,7 +11,10 @@ const { Server } = require('socket.io');
 const caseAI = require('./case-ai');
 
 const PORT = process.env.PORT || 3000;
-const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, 'data', 'rooms.json');
+// Railway에 볼륨을 붙이면 RAILWAY_VOLUME_MOUNT_PATH가 자동으로 들어온다 → 그 안에 저장 (음원·백업도 같은 곳)
+const DATA_FILE =
+  process.env.DATA_FILE ||
+  (process.env.RAILWAY_VOLUME_MOUNT_PATH ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'rooms.json') : path.join(__dirname, 'data', 'rooms.json'));
 const VERSION = 2;
 const MAX_TRIAL_MESSAGES = 3000;
 const MAX_NOTICES = 300;
@@ -129,6 +132,8 @@ setInterval(() => {
 }, BACKUP_MINUTES * 60000).unref();
 
 // 업로드된 이미지는 방 데이터 안에 보관하고 이 주소로 내려준다 (백업에도 함께 포함)
+app.get('/health', (req, res) => res.json({ ok: true }));
+
 app.get('/img/:code/:id', (req, res) => {
   const data = rooms[req.params.code]?.images?.[req.params.id];
   const m = data && /^data:(image\/(?:png|jpeg|webp|gif));base64,(.+)$/.exec(data);
@@ -186,7 +191,11 @@ app.get('/audio/list', (req, res) => {
   );
 });
 
+// 음원은 방에 로그인한 사람만 받을 수 있다 (플레이어마다 고정된 mediaKey로 확인)
+const validMediaKey = (key) => !!key && Object.values(rooms).some((r) => Object.values(r.players).some((p) => p.mediaKey === key));
+
 app.get('/audio/file/:slot', (req, res) => {
+  if (!validMediaKey(String(req.query.k || ''))) return res.sendStatus(403);
   const f = AUDIO_SLOTS.some((s) => s.id === req.params.slot) && audioFile(req.params.slot);
   if (!f) return res.sendStatus(404);
   res.type(AUDIO_EXT_TYPE[f.split('.').pop().toLowerCase()]).sendFile(f);
@@ -282,6 +291,7 @@ function migrate(room) {
   room.nightClosed = room.nightClosed || [];
   room.affinity = room.affinity || {};
   room.cases = room.cases || [];
+  Object.values(room.players || {}).forEach((p) => (p.mediaKey = p.mediaKey || crypto.randomBytes(12).toString('hex')));
   room.cases.forEach((c) => (c.generating = false));
   room.trial.climax = room.trial.climax || null;
   room.trial.showdown = room.trial.showdown || null;
@@ -384,7 +394,7 @@ function publicState(room, pid) {
     locations: room.locations,
     mapImage: room.mapImage,
     rules: room.rules,
-    me: { id: pid, isGM: gm, nickname: room.players[pid]?.nickname },
+    me: { id: pid, isGM: gm, nickname: room.players[pid]?.nickname, mediaKey: room.players[pid]?.mediaKey },
     players: Object.values(room.players).map((p) => ({ id: p.id, nickname: p.nickname, isGM: isGMOf(room, p.id), online: online.has(p.id) })),
     characters,
     evidence,
@@ -643,7 +653,7 @@ io.on('connection', (socket) => {
 
   function newPlayer(r, nickname, password) {
     const salt = crypto.randomBytes(8).toString('hex');
-    const p = { id: uid(), nickname, salt, hash: hashPw(password, salt), joinedAt: Date.now() };
+    const p = { id: uid(), nickname, salt, hash: hashPw(password, salt), joinedAt: Date.now(), mediaKey: crypto.randomBytes(12).toString('hex') };
     r.players[p.id] = p;
     return p;
   }

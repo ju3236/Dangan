@@ -10,7 +10,13 @@ let unlocked = false;
 
 export const audioSlots = () => slots;
 const has = (id) => slots.find((s) => s.id === id)?.version;
-const url = (id) => `/audio/file/${id}?v=${has(id)}`;
+// 로그인 전 로비에서는 마지막으로 로그인했을 때의 키를 쓴다
+const mediaKey = () => {
+  const k = store.state?.me?.mediaKey;
+  if (k) local.set('dgr_media', k);
+  return k || local.get('dgr_media', '');
+};
+const url = (id) => `/audio/file/${id}?v=${has(id)}&k=${mediaKey()}`;
 
 export async function refreshAudio() {
   try {

@@ -96,6 +96,19 @@ npm start
 
 같은 와이파이의 친구는 `http://<내 PC IP>:3000` 으로 들어올 수 있습니다.
 
+## Railway에 올리기 (추천)
+
+1. https://railway.com 에 GitHub 계정으로 가입 → **New Project → Deploy from GitHub repo → `ju3236/Dangan`**.
+2. 만들어진 서비스를 누르고 **Settings → Source → Branch**에서 이 사이트가 있는 브랜치를 고릅니다.
+3. 서비스 위에서 마우스 오른쪽 클릭(또는 `Ctrl/⌘ + K`) → **Volume 추가**, 마운트 경로는 `/data`.
+   - 사이트가 볼륨을 자동으로 알아보고 방 데이터·음원·자동 백업을 전부 볼륨에 저장합니다. 따로 설정할 환경변수는 없어요.
+4. **Settings → Networking → Generate Domain** 으로 주소(`https://….up.railway.app`)를 만들고 친구에게 보냅니다.
+5. 코드가 바뀌면 GitHub에 올라가는 순간 Railway가 자동으로 다시 배포합니다. 볼륨의 데이터는 그대로 남아요.
+
+- 요금: 처음엔 체험 크레딧이 있고, 계속 쓰려면 Hobby 플랜(월 $5, 사용량 $5 포함)이 필요합니다. 둘이 쓰는 정도면 보통 그 안에서 충분해요.
+- 내 컴퓨터에서 쓰던 방을 옮기려면: 내 컴퓨터 GM 화면에서 「방 백업 파일 받기」 → Railway 사이트에서 방을 새로 만든 뒤 「백업 파일 불러오기」. 음원은 Railway 쪽 GM 화면에서 다시 넣어 주세요.
+- 음원은 그 방에 로그인한 사람만 받을 수 있게 막혀 있습니다.
+
 ## 인터넷에 올리기
 
 실시간 서버(Node.js)가 필요해서 GitHub Pages로는 안 되고, Node 18+ 가 돌아가는 호스팅을 쓰면 됩니다.
