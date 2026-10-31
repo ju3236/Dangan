@@ -303,7 +303,7 @@ function bind(el, c) {
   });
   on('closeCase', async () => {
     const has = c.file || c.hasFile;
-    if (confirm(has ? '사건을 종료하고 지난 사건으로 보관할까요?' : '이 추첨을 취소할까요?')) {
+    if (confirm(has ? '사건을 종료하고 지난 사건으로 보관할까요? 진상이 공개되고, 공지 게시판에 「사건 기록」 글이 올라갑니다.' : '이 추첨을 취소할까요?')) {
       await emit(has ? 'case:close' : 'case:delete', { id });
       viewingId = null;
     }

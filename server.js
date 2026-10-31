@@ -547,6 +547,38 @@ function bodyDiscovered(room, pid, text) {
   splash(room, { kind: 'body' });
 }
 
+// 사건이 끝나면 공지 게시판에 사건 기록 글을 남긴다 (처형 때 쓰고, 사건 종료 때 최신 내용으로 다시 씀)
+function writeCaseRecord(room, c, pid) {
+  const f = c.file;
+  if (!f) return;
+  const who = (id) => {
+    const ch = room.characters[id];
+    return ch ? `${ch.name} (${ch.talent || '재능 미상'})` : '?';
+  };
+  const sec = (title, body) => (body ? `\n\n【${title}】\n${body}` : '');
+  const body =
+    `피해자: ${who(c.victimId)}\n흑막: ${who(c.culpritId)}\n현장: ${f.crimeScene} · 사망 시각: ${f.timeOfDeath} · 흉기: ${f.weapon}` +
+    sec('사건 개요', f.overview) +
+    sec('동기', f.motive) +
+    sec('수법', f.method) +
+    sec('타임라인', f.timeline.map((t) => `· ${t.time} — ${t.event}`).join('\n')) +
+    sec('모노쿠마 파일', f.monokumaFile) +
+    sec('단서', f.clues.map((x) => `· ${x.name}${x.location ? ` (${x.location})` : ''} — ${x.desc}`).join('\n')) +
+    sec('학급재판 논점', f.trialPoints.map((t, i) => `${i + 1}. ${t.topic} → ⚡ ${t.answerClue}\n   ${t.explanation}`).join('\n')) +
+    sec('투표 결과', c.voteSummary) +
+    sec(f.execution?.title || '오시오키', f.execution?.scenes?.join('\n'));
+  const title = `📁 사건 기록 — ${f.title}`;
+  const old = c.recordPostId && room.posts.find((p) => p.id === c.recordPostId);
+  if (old) return Object.assign(old, { title, body, editedAt: Date.now() });
+  const post = {
+    id: uid(), no: ++room.postSeq, board: 'notice', day: room.day, location: f.crimeScene || '', charId: null, spriteId: null,
+    authorId: pid, monokuma: true, title, body, ts: Date.now(), editedAt: null, pinned: false, comments: [],
+  };
+  room.posts.push(post);
+  c.recordPostId = post.id;
+  notice(room, `📁 공지 게시판에 「${f.title}」 사건 기록이 올라왔습니다.`, [], { kind: 'phase' });
+}
+
 function sendMail(room, charId, subject, body, extra = {}) {
   const m = { id: uid(), charId, from: extra.from || '모노쿠마', subject, body, ts: Date.now(), read: false, ...extra };
   room.mails.push(m);
@@ -1454,6 +1486,10 @@ io.on('connection', (socket) => {
       if (c) {
         c.status = 'closed';
         c.closedAt = Date.now();
+        if (c.file) {
+          c.revealed = true; // 끝난 사건은 진상을 공개한다
+          writeCaseRecord(room, c, pid);
+        }
       }
       broadcast(room);
     },
@@ -1736,6 +1772,7 @@ io.on('connection', (socket) => {
       trialPush(room, { type: 'narration', text: `【${script.title}】\n${script.scenes.join('\n')}` });
       io.to(room.code).emit('execution:play', { charId: k.id, title: script.title, scenes: script.scenes });
       notice(room, `── ${room.day}일째 · 처형 ── ${k.name}의 오시오키`, [], { kind: 'phase' });
+      writeCaseRecord(room, c, pid);
       broadcast(room);
     },
     { gm: true }
@@ -1842,6 +1879,7 @@ io.on('connection', (socket) => {
         const sorted = Object.entries(tally).sort((a, b) => b[1] - a[1]);
         const top = sorted[0] && (!sorted[1] || sorted[1][1] < sorted[0][1]) ? sorted[0][0] : null;
         const correct = top === c.culpritId;
+        c.voteSummary = `${lines.join(' / ') || '투표 없음'} → ${correct ? '정답' : '오답'}`;
         setTimeout(() => {
           revealCase(c, correct ? '정답입니다~!! ' : '아쉽게도 오답! ');
           splash(room, { kind: correct ? 'correct' : 'wrong' });
