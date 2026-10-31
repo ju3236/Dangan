@@ -394,7 +394,11 @@ function bind(el, name, args) {
   const sp = $('#cSprite', el);
   if (sp) sp.onchange = () => lastSprite($('#cAs').value, sp.value);
   const body = $('#cBody', el);
-  if (body) body.onkeydown = (e) => e.key === 'Enter' && (e.ctrlKey || e.metaKey) && $('#cForm').requestSubmit();
+  // 주의: on* 핸들러가 false를 돌려주면 키 입력이 취소된다 → 반드시 블록으로 감싸 아무것도 돌려주지 않게
+  if (body)
+    body.onkeydown = (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) $('#cForm').requestSubmit();
+    };
   const cf = $('#cForm', el);
   if (cf)
     cf.onsubmit = async (e) => {
