@@ -1,5 +1,5 @@
 // 학급재판: 실시간 채팅 + 단간론파식 대화창 + 표정 스프라이트
-import { $, $$, esc, emit, store, render as paint, toast, modal, isGM, charById, myChars, students, evidenceById, avatar, spriteOf, charSelectHTML, fmtTime, weakHTML, clueHTML, speakAs, lastSprite, download, ink, cvar, setCvar } from './core.js';
+import { $, $$, esc, emit, store, render as paint, toast, modal, isGM, charById, myChars, students, evidenceById, avatar, spriteOf, charSelectHTML, fmtTime, weakHTML, clueHTML, speakAs, lastSprite, download, ink, cvar, setCvar, halo } from './core.js';
 
 let shownId = null; // 무대에 표시 중인 메시지
 let typing = null;
@@ -466,7 +466,7 @@ function logHTML() {
         }
       })
       .join('') +
-    `<div class="row end log-tools"><button class="btn tiny ghost" id="saveLog">로그 저장</button>${gm ? '<button class="btn tiny ghost" id="clearLog">로그 비우기</button>' : ''}</div>`
+    `<div class="row end log-tools"><button class="btn tiny ghost" id="saveLogHtml">📖 HTML 저장</button><button class="btn tiny ghost" id="saveLog">텍스트 저장</button>${gm ? '<button class="btn tiny ghost" id="clearLog">로그 비우기</button>' : ''}</div>`
   );
 }
 
@@ -600,6 +600,7 @@ function bindSide(body) {
   on('vReset', () => emit('vote:reset'));
   on('clearLog', () => confirm('재판 로그를 모두 지울까요? (먼저 로그 저장을 권장)') && emit('trial:clear'));
   on('saveLog', saveLog);
+  on('saveLogHtml', saveLogHTML);
 }
 
 function saveLog() {
@@ -618,6 +619,110 @@ function saveLog() {
     }
   });
   download(`dangan-${store.state.code}-trial-log.txt`, `${store.state.title} 학급재판 로그\n\n${lines.join('\n')}`);
+}
+
+// 학급재판 로그를 단간론파 느낌의 HTML 한 파일로 (표정 이미지는 파일 안에 넣어 인터넷 없이도 보이게)
+async function saveLogHTML() {
+  const msgs = store.trial;
+  if (!msgs.length) return toast('저장할 재판 로그가 없습니다.', 'error');
+  toast('HTML을 만드는 중… (표정 이미지를 담는 중)');
+  const imgs = new Map();
+  const toData = async (url) => {
+    if (!url || url.startsWith('data:')) return url;
+    if (imgs.has(url)) return imgs.get(url);
+    let out = url;
+    try {
+      const blob = await (await fetch(url)).blob();
+      out = await new Promise((ok) => {
+        const r = new FileReader();
+        r.onload = () => ok(r.result);
+        r.onerror = () => ok(url);
+        r.readAsDataURL(blob);
+      });
+    } catch {}
+    imgs.set(url, out);
+    return out;
+  };
+  const face = async (c, spriteId) => {
+    if (!c) return '<span class="av mk">?</span>';
+    const sp = spriteOf(c, spriteId);
+    if (sp) return `<img class="av" src="${await toData(sp.img)}" alt="" style="border-color:${c.color}">`;
+    return `<span class="av" style="color:${c.color};border-color:${c.color};text-shadow:${halo(c.color)}">${esc(c.name.slice(0, 1))}</span>`;
+  };
+  const name = (c, fallback = '?') => `<b class="nm" style="${ink(c?.color || '#ccc')}">${esc(c?.name || fallback)}</b>`;
+  // {약점} 강조 + 언령 이름 강조
+  const evNames = store.state.evidence.map((e) => e.name).filter((n) => n.length >= 2).sort((a, b) => b.length - a.length);
+  const evRe = evNames.length ? new RegExp(evNames.map((n) => esc(n).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'g') : null;
+  const txt = (t) =>
+    String(t || '')
+      .split(/(\{[^{}]+\})/)
+      .map((part) => {
+        const m = /^\{([^{}]+)\}$/.exec(part);
+        if (m) return `<span class="weak">${esc(m[1])}</span>`;
+        const h = esc(part);
+        return evRe ? h.replace(evRe, (x) => `<span class="ev">${x}</span>`) : h;
+      })
+      .join('')
+      .replace(/\n/g, '<br>');
+  const time = (m) => `<small class="tm">${new Date(m.ts).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</small>`;
+  const rows = [];
+  for (const m of msgs) {
+    const c = charById(m.charId);
+    switch (m.type) {
+      case 'say':
+        rows.push(`<div class="say ${m.broken ? 'broken' : ''}">${await face(c, m.spriteId)}<div class="bubble">${name(c)} ${time(m)}<p>${txt(m.text)}</p></div></div>`);
+        break;
+      case 'showdown':
+        rows.push(`<div class="say showdown">${await face(c, null)}<div class="bubble">${name(c)} <span class="tag red">⚔ 반론 ${m.line}/${m.total}</span> ${time(m)}<p>${txt(m.text)}</p></div></div>`);
+        break;
+      case 'point':
+        rows.push(`<div class="point"><span class="tag pink">논스톱 의논 · 논점 ${m.index}</span> <b>${esc(m.topic || '')}</b><p>${txt(m.text)}</p></div>`);
+        break;
+      case 'shoot': {
+        const cry = { agree: '동의한다!', cut: '그 말, 베어 주겠어!' }[m.kind] || '그건 틀렸어!';
+        const res = { break: '<span class="tag break">BREAK!!</span>', miss: '<span class="tag miss">튕겨났다…</span>', pending: '<span class="tag">판정 대기</span>' }[m.result] || '';
+        rows.push(`<div class="shoot">${await face(c, null)}<div><span class="cry">${esc(cry)}</span> ${name(c)} ${res}<p>${txt(m.text)}</p></div></div>`);
+        break;
+      }
+      case 'narration':
+        rows.push(`<div class="narr">${txt(m.text)}</div>`);
+        break;
+      case 'announce':
+        rows.push(`<div class="mk"><span class="bear">🐻</span><div><b>모노쿠마</b> ${time(m)}<p>${txt(m.text)}</p></div></div>`);
+        break;
+      case 'phase':
+        rows.push(`<h2 class="phase">${esc(m.text)}</h2>`);
+        break;
+      case 'skill':
+        rows.push(`<div class="skill">✨ ${name(c)} 스킬 발동 — ${esc(m.text)}</div>`);
+        break;
+      case 'ooc':
+        rows.push(`<div class="ooc">(OOC) ${esc(m.author || '')}: ${esc(m.text)}</div>`);
+        break;
+      default:
+        rows.push(`<div class="sys">${esc(m.text)}</div>`);
+    }
+  }
+  // 이 로그에 나온 언령 정리 (내가 볼 수 있는 것만)
+  const used = store.state.evidence.filter((e) => msgs.some((m) => m.evidenceId === e.id || (e.name.length >= 2 && String(m.text || '').includes(e.name))));
+  const glossary = used.length
+    ? `<section class="gloss"><h2>⚡ 등장한 언령</h2>${used.map((e) => `<div class="card"><b>⚡ ${esc(e.name)}</b><p>${esc(e.desc || '')}</p></div>`).join('')}</section>`
+    : '';
+  const title = `${store.state.title} — 학급재판 로그`;
+  const css = `*{box-sizing:border-box}body{margin:0;background:#0d0a12 repeating-linear-gradient(135deg,#120e18 0 14px,#0d0a12 14px 28px);color:#eee;font-family:'Noto Sans KR',sans-serif;line-height:1.7}
+main{max-width:820px;margin:0 auto;padding:30px 18px 60px}h1{font-size:28px;margin:0 0 4px;color:#fff;text-shadow:3px 3px 0 #e0287a;transform:skewX(-6deg)}.sub{color:#9a8fa6;margin-bottom:28px}
+.say,.shoot,.mk{display:flex;gap:12px;align-items:flex-start;margin:10px 0}.av{width:56px;height:56px;flex:none;border:2px solid #777;border-radius:4px;background:#111;object-fit:cover;object-position:top;display:grid;place-items:center;font-weight:900;font-size:24px}
+.bubble{background:#1b1622;border-left:4px solid #3a3546;padding:8px 14px;flex:1}.bubble p,.shoot p,.mk p,.point p{margin:4px 0 0}.nm{font-size:15px}.tm{color:#7d7590;margin-left:6px}
+.weak{color:#ff9a1f;font-weight:700;border-bottom:2px solid #ff9a1f}.ev{color:#ffe14a;border-bottom:1px dashed #ffe14a}.say.broken .weak{text-decoration:line-through;color:#888;border-color:#888}
+.showdown .bubble{border-left-color:#ff3b3b}.point{background:#2a0f1e;border:2px solid #e0287a;padding:10px 14px;margin:16px 0}
+.shoot{background:#24170a;border:2px solid #ff9a1f;padding:10px 14px}.shoot .av{width:44px;height:44px}.cry{font-size:20px;font-weight:900;color:#ff9a1f;font-style:italic;margin-right:6px}
+.tag{display:inline-block;padding:0 8px;font-size:12px;font-weight:700;background:#3a3546;color:#fff;transform:skewX(-10deg)}.tag.pink{background:#e0287a}.tag.red{background:#ff3b3b}.tag.break{background:#ffe14a;color:#000}.tag.miss{background:#555}
+.narr{text-align:center;font-style:italic;color:#d9cfe3;margin:18px 30px}.mk{background:#fff;color:#111;padding:10px 14px}.mk .bear{font-size:34px}.mk .tm{color:#777}
+.phase{text-align:center;margin:36px 0 18px;color:#fff;background:#e0287a;padding:6px;transform:skewX(-10deg);font-size:22px}.skill{color:#c9a6ff;margin:8px 0}.ooc,.sys{color:#7d7590;font-size:13px;margin:6px 0}
+.gloss{margin-top:40px;border-top:3px double #555;padding-top:10px}.card{background:#1b1622;border:1px solid #ffe14a;padding:8px 14px;margin:8px 0}.card p{margin:4px 0 0;color:#ccc}`;
+  const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${css}</style></head>
+<body><main><h1>⚖️ ${esc(title)}</h1><div class="sub">${esc(new Date().toLocaleString('ko-KR'))} 저장 · 메시지 ${msgs.length}개</div>${rows.join('\n')}${glossary}</main></body></html>`;
+  download(`dangan-${store.state.code}-trial-log.html`, html, 'text/html');
 }
 
 // ---------- 언령 쏘기 ----------
