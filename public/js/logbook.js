@@ -1,6 +1,6 @@
 // 로그북: 한 챕터(일상 → 조사 → 재판)를 책처럼 모아 보기 / 내보내기
 // 챕터는 재판 로그의 「처형」을 경계로 나눈다 (모두가 볼 수 있는 정보만 사용)
-import { $, esc, store, charById, playerById, download, ink } from './core.js';
+import { $, esc, store, charById, playerById, download, ink, sanitizeHTML } from './core.js';
 
 const BOARD = { notice: '공지', daily: '일상', investigation: '조사', freetime: '자유시간', free: '자유' };
 
@@ -77,7 +77,7 @@ function itemsHTML(items) {
           <div class="lb-meta">[${BOARD[p.board] || p.board}]${p.location ? ` 📍${esc(p.location)}` : ''}</div>
           <h4>${esc(p.title)}</h4>
           <div class="lb-author">${esc(nameOf(p.charId, p.authorId, p.displayName || (p.monokuma ? '모노쿠마' : null)))}${partner ? ` ♥ ${esc(partner.name)}` : ''}</div>
-          <div class="lb-body">${esc(p.body).replace(/\n/g, '<br>')}</div>
+          <div class="lb-body">${p.html ? sanitizeHTML(p.body) : esc(p.body).replace(/\n/g, '<br>')}</div>
           ${p.comments.map((c) => `<div class="lb-cmt ${c.parentId ? 'reply' : ''}"><b>${esc(nameOf(c.charId, c.authorId, c.displayName || (c.gm ? 'GM' : null)))}</b> ${esc(c.body).replace(/\n/g, '<br>')}${c.grants?.length ? ` <i>(${esc(c.grants.map((g) => g.label).join(', '))})</i>` : ''}</div>`).join('')}
         </article>`;
       }

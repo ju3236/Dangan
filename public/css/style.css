@@ -186,6 +186,11 @@ button.link { background: none; border: 0; color: inherit; cursor: pointer; padd
 .post-actions { margin-left: auto; display: flex; gap: 6px; }
 .post-body { padding: 24px 2px 34px; white-space: pre-wrap; word-break: break-word; font-size: 15px; line-height: 1.8; min-height: 120px; }
 .post-body::after { content: ''; display: block; clear: both; }
+.post-body.html { white-space: normal; position: relative; overflow: hidden; }
+.post-body.html img { max-width: 100%; height: auto; }
+.post-body.html table { border-collapse: collapse; max-width: 100%; }
+.post-body.preview { border: 2px dashed var(--pink); padding: 14px; margin: 6px 0; background: #fff; color: #222; }
+.html-tools { align-items: center; gap: 10px; }
 .post-sprite { float: right; max-height: 280px; max-width: 40%; margin: 0 0 10px 16px; }
 .comments { border-top: 1px solid var(--pline); padding-top: 14px; }
 .comments h3 { color: var(--ink); }

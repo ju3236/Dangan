@@ -1,5 +1,5 @@
 // 게시판 (일상/조사 파트): 네이버 카페 같은 글 + 댓글
-import { $, $$, esc, emit, store, local, mentionHTML, render as paint, toast, isGM, charById, myChars, students, playerById, avatar, spriteOf, charSelectHTML, fmtTime, speakAs, lastSprite, ink, cvar } from './core.js';
+import { $, $$, esc, emit, store, local, mentionHTML, render as paint, toast, isGM, charById, myChars, students, playerById, avatar, spriteOf, charSelectHTML, fmtTime, speakAs, lastSprite, ink, cvar, bodyHTML, sanitizeHTML } from './core.js';
 
 export const BOARDS = {
   all: '전체글보기',
@@ -193,7 +193,7 @@ function postView(p) {
         </div>
       </div>
     </div>
-    <div class="post-body">${sprite ? `<img class="post-sprite" src="${esc(sprite.img)}" alt="">` : ''}${mentionHTML(esc(p.body))}</div>
+    <div class="post-body ${p.html ? 'html' : ''}">${sprite ? `<img class="post-sprite" src="${esc(sprite.img)}" alt="">` : ''}${bodyHTML(p)}</div>
     <div class="comments">
       <h3>댓글 <b>${p.comments.length}</b></h3>
       ${top.map((c) => commentHTML(p, c) + replies(c.id).map((r) => commentHTML(p, r, true)).join('')).join('') || '<p class="hint">첫 댓글을 남겨 보세요.</p>'}
@@ -300,7 +300,11 @@ function writeView(p, boardArg) {
     </div>`}
     ${ft ? freeTimeFields(charId, pre[2]) : ''}
     <input id="wTitle" maxlength="100" placeholder="${ft ? '제목 (비우면 「A 와(과) B 의 자유시간」)' : '제목을 입력해 주세요.'}" value="${esc(p?.title || '')}">
+    <div class="row wrap html-tools"><label class="chk"><input type="checkbox" id="wHtml" ${($('#wHtml') ? $('#wHtml').checked : p?.html) ? 'checked' : ''}> &lt;/&gt; HTML 모드</label>
+      <button type="button" class="btn tiny ghost" id="wPreviewBtn">미리 보기</button>
+      <span class="hint">HTML 모드에서는 &lt;b&gt;, &lt;font color&gt;, &lt;span style&gt;, &lt;table&gt;, &lt;img src="https://…"&gt;, &lt;details&gt; 같은 꾸밈 태그를 쓸 수 있어요. 스크립트 등 위험한 태그는 자동으로 빠집니다.</span></div>
     <textarea id="wBody" rows="16" placeholder="${board === 'investigation' ? '어디를 어떻게 조사하는지 적어 주세요. GM이 댓글로 결과를 알려줍니다.' : ft ? '함께 무엇을 하며 시간을 보냈는지 적어 주세요. 상대 캐릭터의 플레이어가 댓글로 이어서 역극합니다.' : '내용을 입력하세요.'}">${esc(p?.body || '')}</textarea>
+    <div id="wPreview" class="post-body html preview hidden" data-fresh></div>
     <div class="row end"><a class="btn ghost small" href="${p ? `#/post/${p.id}` : `#/board/${board}`}">취소</a><button class="btn pink">${p ? '수정' : ft ? '💞 자유시간 보내기 (티켓 1장)' : '등록'}</button></div>
   </form>`;
 }
@@ -343,9 +347,15 @@ function bind(el, name, args) {
     if (sp) sp.onchange = () => lastSprite($('#wAs').value, sp.value);
     const wb = $('#wBoard', el);
     if (wb) wb.onchange = () => refresh();
+    $('#wPreviewBtn', el).onclick = () => {
+      const pv = $('#wPreview', el);
+      const show = pv.classList.contains('hidden');
+      pv.classList.toggle('hidden', !show);
+      if (show) pv.innerHTML = $('#wHtml').checked ? sanitizeHTML($('#wBody').value) : mentionHTML(esc($('#wBody').value)).replace(/\n/g, '<br>');
+    };
     wf.onsubmit = async (e) => {
       e.preventDefault();
-      const data = { title: $('#wTitle').value, body: $('#wBody').value, location: $('#wLoc').value };
+      const data = { title: $('#wTitle').value, body: $('#wBody').value, location: $('#wLoc').value, html: $('#wHtml').checked };
       if (name === 'edit') {
         if (await emit('post:edit', { id: args[0], ...data })) location.hash = `#/post/${args[0]}`;
       } else if ($('#wBoard').value === 'freetime') {

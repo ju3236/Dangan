@@ -205,6 +205,47 @@ export function toast(text, kind = 'info', link = null) {
 }
 
 // '@캐릭터이름'을 강조 (이미 이스케이프된 HTML에 적용)
+// ---------- HTML 모드 글: 허용한 태그·속성만 남긴다 ----------
+const HTML_DROP = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'FORM', 'INPUT', 'TEXTAREA', 'BUTTON', 'SELECT', 'LINK', 'META', 'SVG', 'MATH', 'TEMPLATE', 'NOSCRIPT', 'BASE', 'AUDIO', 'VIDEO', 'SOURCE', 'FRAME', 'FRAMESET']);
+const HTML_TAGS = new Set('B STRONG I EM U S STRIKE DEL INS MARK SMALL BIG SUB SUP BR HR P DIV SPAN FONT CENTER H1 H2 H3 H4 H5 H6 BLOCKQUOTE PRE CODE UL OL LI DL DT DD TABLE THEAD TBODY TFOOT TR TH TD CAPTION COLGROUP COL IMG A FIGURE FIGCAPTION DETAILS SUMMARY RUBY RT RP Q CITE ABBR KBD'.split(' '));
+const HTML_ATTRS = new Set(['style', 'class', 'title', 'align', 'valign', 'color', 'size', 'face', 'width', 'height', 'colspan', 'rowspan', 'border', 'cellpadding', 'cellspacing', 'bgcolor', 'src', 'alt', 'href', 'open', 'start', 'type']);
+const safeUrl = (u, img) => {
+  const v = String(u || '').trim();
+  if (/^https?:\/\//i.test(v) || /^\/img\//.test(v) || /^#/.test(v)) return true;
+  return img && /^data:image\/(png|jpe?g|gif|webp);/i.test(v);
+};
+export function sanitizeHTML(html) {
+  const doc = new DOMParser().parseFromString(`<div>${String(html || '')}</div>`, 'text/html');
+  const walk = (node) => {
+    for (const el of [...node.children]) {
+      if (HTML_DROP.has(el.tagName)) {
+        el.remove();
+        continue;
+      }
+      walk(el);
+      if (!HTML_TAGS.has(el.tagName)) {
+        el.replaceWith(...el.childNodes); // 모르는 태그는 벗기고 안의 글자만 남긴다
+        continue;
+      }
+      for (const a of [...el.attributes]) {
+        const n = a.name.toLowerCase();
+        if (!HTML_ATTRS.has(n)) el.removeAttribute(a.name);
+        else if ((n === 'src' || n === 'href') && !safeUrl(a.value, n === 'src')) el.removeAttribute(a.name);
+        else if (n === 'style') el.setAttribute('style', a.value.replace(/url\s*\(|expression\s*\(|javascript:|position\s*:\s*(fixed|sticky)|@import/gi, ''));
+      }
+      if (el.tagName === 'A') {
+        el.setAttribute('target', '_blank');
+        el.setAttribute('rel', 'noopener noreferrer');
+      }
+    }
+  };
+  const root = doc.body.firstElementChild;
+  walk(root);
+  return root.innerHTML;
+}
+// 글 본문: HTML 모드면 정리된 HTML, 아니면 글자 그대로
+export const bodyHTML = (p) => (p.html ? sanitizeHTML(p.body) : mentionHTML(esc(p.body)));
+
 export function mentionHTML(html) {
   const names = (store.state?.characters || []).map((c) => c.name).filter(Boolean).sort((a, b) => b.length - a.length);
   if (!names.length) return html;

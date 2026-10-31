@@ -152,7 +152,8 @@ function buildContext(room, { victimId, culpritId, difficulty, notes }) {
     lines.push('\n## 최근 역극 기록 (오래된 순)');
     for (const p of posts) {
       const who = [p.charId, p.partnerId].filter(Boolean).map(name).join(' & ') || p.displayName || 'GM';
-      lines.push(`### [${p.day}일째${p.location ? ` · ${p.location}` : ''}] ${p.title} — ${who}\n${cut(p.body, 500)}`);
+      const text = p.html ? p.body.replace(/<br\s*\/?>|<\/(p|div|li|h\d)>/gi, '\n').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ') : p.body;
+      lines.push(`### [${p.day}일째${p.location ? ` · ${p.location}` : ''}] ${p.title} — ${who}\n${cut(text, 500)}`);
       for (const c of p.comments.slice(0, 8)) lines.push(`  └ ${c.charId ? name(c.charId) : c.displayName || 'GM'}: ${cut(c.body, 160).replace(/\n/g, ' ')}`);
     }
   }

@@ -897,7 +897,7 @@ io.on('connection', (socket) => {
     if (d.charId && !ownChar(d.charId)) return reply({ error: '권한이 없습니다.' });
     const post = {
       id: uid(), no: ++room.postSeq, board, day: room.day, location: str(d.location, 40),
-      charId: d.charId || null, spriteId: str(d.spriteId, 20) || null, authorId: pid, title, body,
+      charId: d.charId || null, spriteId: str(d.spriteId, 20) || null, authorId: pid, title, body, html: !!d.html,
       ts: Date.now(), editedAt: null, pinned: false, comments: [],
     };
     room.posts.push(post);
@@ -958,6 +958,7 @@ io.on('connection', (socket) => {
     if (!post || (post.authorId !== pid && !isGM())) return reply({ error: '권한이 없습니다.' });
     post.title = str(d.title, 100).trim() || post.title;
     post.body = str(d.body, 20000);
+    post.html = !!d.html;
     post.location = str(d.location, 40);
     post.editedAt = Date.now();
     broadcast(room);
@@ -1176,7 +1177,7 @@ io.on('connection', (socket) => {
     const post = {
       id: uid(), no: ++room.postSeq, board: 'freetime', day: room.day, location: str(d.location, 40),
       charId: c.id, partnerId: partner.id, spriteId: str(d.spriteId, 20) || null, authorId: pid,
-      title, body: str(d.body, 20000), ts: Date.now(), editedAt: null, pinned: false, comments: [],
+      title, body: str(d.body, 20000), html: !!d.html, ts: Date.now(), editedAt: null, pinned: false, comments: [],
     };
     room.posts.push(post);
     notice(room, `💞 ${c.name} 이(가) ${partner.name} 와(과) 자유시간을 보냈다.`, [], { kind: 'affinity' });
