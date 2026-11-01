@@ -287,6 +287,7 @@ function createRoom(code, title) {
     timeOfDay: 'day',
     nightClosed: [],
     lore: [], // 지난 이야기 (사이트 밖에서 진행한 챕터 기록 등)
+    trialArchives: [], // 로그를 비울 때 보관한 지난 재판
     chapterStart: 1,
     affinity: {},
     cases: [],
@@ -329,6 +330,7 @@ function migrate(room) {
   room.timeOfDay = room.timeOfDay || 'day';
   room.nightClosed = room.nightClosed || [];
   room.lore = room.lore || [];
+  room.trialArchives = room.trialArchives || [];
   room.chapterStart = room.chapterStart || 1;
   room.affinity = room.affinity || {};
   room.cases = room.cases || [];
@@ -434,6 +436,7 @@ function publicState(room, pid) {
     nightClosed: room.nightClosed,
     chapterStart: room.chapterStart,
     lore: room.lore.filter((l) => gm || l.public),
+    trialArchives: room.trialArchives.map(({ id, title, ts, from, to, messages }) => ({ id, title, ts, from, to, count: messages.length })),
     locations: room.locations,
     mapImage: room.mapImage,
     rules: room.rules,
@@ -479,6 +482,20 @@ function trialMsgView(room, m, gm) {
   if (gm && !isSealed(caseById(room, m.caseId))) return m;
   const { answerId, answerName, ...rest } = m;
   return { ...rest, hasAnswer: true };
+}
+
+// 재판 로그를 비우기 전에 「지난 재판」으로 보관 (사이트 안에서 다시 볼 수 있게)
+function archiveTrial(room, title) {
+  const msgs = room.trial.messages;
+  if (!msgs.length) return null;
+  const c = [...room.cases].reverse().find((x) => x.file && x.revealed);
+  const a = {
+    id: uid(), ts: Date.now(), from: msgs[0].ts, to: msgs[msgs.length - 1].ts, messages: msgs.slice(),
+    title: str(title, 80).trim() || (c ? `${c.file.title} — 학급재판` : `${room.day}일째 학급재판`),
+  };
+  room.trialArchives.push(a);
+  if (room.trialArchives.length > 30) room.trialArchives.shift();
+  return a;
 }
 
 function sendTrialLog(room) {
@@ -1672,14 +1689,41 @@ io.on('connection', (socket) => {
 
   on(
     'trial:clear',
-    () => {
+    (d) => {
       snapshot(room, 'before-clear');
+      archiveTrial(room, d?.title);
       room.trial.messages = [];
       room.trial.climax = null;
       room.trial.showdown = null;
       io.to(room.code).emit('trial:log', []);
       broadcast(room);
       scheduleSave();
+    },
+    { gm: true }
+  );
+
+  on(
+    'trial:archiveNow',
+    ({ title }, reply) => {
+      const a = archiveTrial(room, title);
+      if (!a) return reply({ error: '보관할 재판 로그가 없습니다.' });
+      broadcast(room);
+      reply({ id: a.id });
+    },
+    { gm: true }
+  );
+
+  on('trial:archive', ({ id }, reply) => {
+    const a = room.trialArchives.find((x) => x.id === id);
+    if (!a) return reply({ error: '기록을 찾을 수 없습니다.' });
+    reply({ title: a.title, messages: a.messages.map((m) => trialMsgView(room, m, isGM())) });
+  });
+
+  on(
+    'trial:archiveDelete',
+    ({ id }) => {
+      room.trialArchives = room.trialArchives.filter((x) => x.id !== id);
+      broadcast(room);
     },
     { gm: true }
   );

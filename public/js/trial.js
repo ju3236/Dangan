@@ -423,7 +423,8 @@ function renderSide(scrollTop = false, newMsg = false) {
 
 function logHTML() {
   const gm = isGM();
-  if (!store.trial.length) return '<p class="hint">재판 로그가 비어 있습니다.</p>';
+  if (!store.trial.length)
+    return `<p class="hint">재판 로그가 비어 있습니다.</p>${store.state.trialArchives?.length ? `<div class="row end log-tools"><button class="btn tiny ghost" id="openArchives">📚 지난 재판 (${store.state.trialArchives.length})</button></div>` : ''}`;
   return (
     store.trial
       .map((m) => {
@@ -466,7 +467,7 @@ function logHTML() {
         }
       })
       .join('') +
-    `<div class="row end log-tools"><button class="btn tiny ghost" id="saveLogHtml">📖 HTML 저장</button><button class="btn tiny ghost" id="saveLog">텍스트 저장</button>${gm ? '<button class="btn tiny ghost" id="clearLog">로그 비우기</button>' : ''}</div>`
+    `<div class="row end log-tools"><button class="btn tiny ghost" id="openArchives">📚 지난 재판${store.state.trialArchives?.length ? ` (${store.state.trialArchives.length})` : ''}</button><button class="btn tiny ghost" id="saveLogHtml">📖 HTML 저장</button><button class="btn tiny ghost" id="saveLog">텍스트 저장</button>${gm ? '<button class="btn tiny ghost" id="clearLog">로그 비우기</button>' : ''}</div>`
   );
 }
 
@@ -598,9 +599,10 @@ function bindSide(body) {
   on('vOpen', () => emit('vote:open'));
   on('vReveal', () => emit('vote:reveal'));
   on('vReset', () => emit('vote:reset'));
-  on('clearLog', () => confirm('재판 로그를 모두 지울까요? (먼저 로그 저장을 권장)') && emit('trial:clear'));
+  on('clearLog', () => confirm('재판 로그를 비울까요? 지금까지의 로그는 「📚 지난 재판」에 보관돼서 나중에도 볼 수 있어요.') && emit('trial:clear'));
   on('saveLog', saveLog);
   on('saveLogHtml', saveLogHTML);
+  on('openArchives', openArchives);
 }
 
 function saveLog() {
@@ -623,9 +625,13 @@ function saveLog() {
 
 // 학급재판 로그를 단간론파 느낌의 HTML 한 파일로 (표정 이미지는 파일 안에 넣어 인터넷 없이도 보이게)
 async function saveLogHTML() {
-  const msgs = store.trial;
-  if (!msgs.length) return toast('저장할 재판 로그가 없습니다.', 'error');
+  if (!store.trial.length) return toast('저장할 재판 로그가 없습니다.', 'error');
   toast('HTML을 만드는 중… (표정 이미지를 담는 중)');
+  download(`dangan-${store.state.code}-trial-log.html`, await buildLogHTML(store.trial, `${store.state.title} — 학급재판 로그`), 'text/html');
+}
+
+// 로그 → HTML 문서 한 장. 다른 홈페이지에 붙여넣어도 모양이 유지되도록 모든 스타일을 .dgr-log 안에 가둔다
+async function buildLogHTML(msgs, title) {
   const imgs = new Map();
   const toData = async (url) => {
     if (!url || url.startsWith('data:')) return url;
@@ -708,21 +714,88 @@ async function saveLogHTML() {
   const glossary = used.length
     ? `<section class="gloss"><h2>⚡ 등장한 언령</h2>${used.map((e) => `<div class="card"><b>⚡ ${esc(e.name)}</b><p>${esc(e.desc || '')}</p></div>`).join('')}</section>`
     : '';
-  const title = `${store.state.title} — 학급재판 로그`;
-  const css = `*{box-sizing:border-box}body{margin:0;background:#0d0a12 repeating-linear-gradient(135deg,#120e18 0 14px,#0d0a12 14px 28px);color:#eee;font-family:'Noto Sans KR',sans-serif;line-height:1.7}
-main{max-width:820px;margin:0 auto;padding:30px 18px 60px}h1{font-size:28px;margin:0 0 4px;color:#fff;text-shadow:3px 3px 0 #e0287a;transform:skewX(-6deg)}.sub{color:#9a8fa6;margin-bottom:28px}
-.say,.shoot,.mk{display:flex;gap:12px;align-items:flex-start;margin:10px 0}.av{width:56px;height:56px;flex:none;border:2px solid #777;border-radius:4px;background:#111;object-fit:cover;object-position:top;display:grid;place-items:center;font-weight:900;font-size:24px}
-.bubble{background:#1b1622;border-left:4px solid #3a3546;padding:8px 14px;flex:1}.bubble p,.shoot p,.mk p,.point p{margin:4px 0 0}.nm{font-size:15px}.tm{color:#7d7590;margin-left:6px}
-.weak{color:#ff9a1f;font-weight:700;border-bottom:2px solid #ff9a1f}.ev{color:#ffe14a;border-bottom:1px dashed #ffe14a}.say.broken .weak{text-decoration:line-through;color:#888;border-color:#888}
-.showdown .bubble{border-left-color:#ff3b3b}.point{background:#2a0f1e;border:2px solid #e0287a;padding:10px 14px;margin:16px 0}
-.shoot{background:#24170a;border:2px solid #ff9a1f;padding:10px 14px}.shoot .av{width:44px;height:44px}.cry{font-size:20px;font-weight:900;color:#ff9a1f;font-style:italic;margin-right:6px}
-.tag{display:inline-block;padding:0 8px;font-size:12px;font-weight:700;background:#3a3546;color:#fff;transform:skewX(-10deg)}.tag.pink{background:#e0287a}.tag.red{background:#ff3b3b}.tag.break{background:#ffe14a;color:#000}.tag.miss{background:#555}
-.narr{text-align:center;font-style:italic;color:#d9cfe3;margin:18px 30px}.mk{background:#fff;color:#111;padding:10px 14px}.mk .bear{font-size:34px}.mk .tm{color:#777}
-.phase{text-align:center;margin:36px 0 18px;color:#fff;background:#e0287a;padding:6px;transform:skewX(-10deg);font-size:22px}.skill{color:#c9a6ff;margin:8px 0}.ooc,.sys{color:#7d7590;font-size:13px;margin:6px 0}
-.gloss{margin-top:40px;border-top:3px double #555;padding-top:10px}.card{background:#1b1622;border:1px solid #ffe14a;padding:8px 14px;margin:8px 0}.card p{margin:4px 0 0;color:#ccc}`;
+  const css = `body{margin:0;background:#0d0a12}
+.dgr-log,.dgr-log *{box-sizing:border-box}.dgr-log{background:#0d0a12 repeating-linear-gradient(135deg,#120e18 0 14px,#0d0a12 14px 28px);color:#eee!important;font-family:'Noto Sans KR',sans-serif;line-height:1.7;text-align:left}
+.dgr-log p,.dgr-log div,.dgr-log span,.dgr-log small,.dgr-log section{color:inherit!important;font-family:inherit}.dgr-log p{margin:0}
+.dgr-log main{display:block;max-width:820px;margin:0 auto;padding:30px 18px 60px}
+.dgr-log h1{font-size:28px;margin:0 0 4px;color:#fff!important;text-shadow:3px 3px 0 #e0287a;transform:skewX(-6deg)}
+.dgr-log .sub{color:#9a8fa6!important;margin-bottom:28px}
+.dgr-log .say,.dgr-log .shoot,.dgr-log .mk{display:flex;gap:12px;align-items:flex-start;margin:10px 0}
+.dgr-log .av{width:56px;height:56px;flex:none;border:2px solid #777;border-radius:4px;background:#111;object-fit:cover;object-position:top;display:grid;place-items:center;font-weight:900;font-size:24px}
+.dgr-log .bubble{background:#1b1622;border-left:4px solid #3a3546;padding:8px 14px;flex:1}
+.dgr-log .bubble p,.dgr-log .shoot p,.dgr-log .mk p,.dgr-log .point p{margin:4px 0 0}
+.dgr-log .nm{font-size:15px}
+.dgr-log .tm{color:#7d7590!important;margin-left:6px}
+.dgr-log .weak{color:#ff9a1f!important;font-weight:700;border-bottom:2px solid #ff9a1f}
+.dgr-log .ev{color:#ffe14a!important;border-bottom:1px dashed #ffe14a}
+.dgr-log .say.broken .weak{text-decoration:line-through;color:#888!important;border-color:#888}
+.dgr-log .showdown .bubble{border-left-color:#ff3b3b}
+.dgr-log .point{background:#2a0f1e;border:2px solid #e0287a;padding:10px 14px;margin:16px 0}
+.dgr-log .shoot{background:#24170a;border:2px solid #ff9a1f;padding:10px 14px}
+.dgr-log .shoot .av{width:44px;height:44px}
+.dgr-log .cry{font-size:20px;font-weight:900;color:#ff9a1f!important;font-style:italic;margin-right:6px}
+.dgr-log .tag{display:inline-block;padding:0 8px;font-size:12px;font-weight:700;background:#3a3546;color:#fff!important;transform:skewX(-10deg)}
+.dgr-log .tag.pink{background:#e0287a}
+.dgr-log .tag.red{background:#ff3b3b}
+.dgr-log .tag.break{background:#ffe14a;color:#000!important}
+.dgr-log .tag.miss{background:#555}
+.dgr-log .narr{text-align:center;font-style:italic;color:#d9cfe3!important;margin:18px 30px}
+.dgr-log .mk{background:#fff;color:#111!important;padding:10px 14px}
+.dgr-log .mk .bear{font-size:34px}
+.dgr-log .mk .tm{color:#777!important}
+.dgr-log .phase{text-align:center;margin:36px 0 18px;color:#fff!important;background:#e0287a;padding:6px;transform:skewX(-10deg);font-size:22px}
+.dgr-log .skill{color:#c9a6ff!important;margin:8px 0}
+.dgr-log .ooc,.dgr-log .sys{color:#7d7590!important;font-size:13px;margin:6px 0}
+.dgr-log .gloss{margin-top:40px;border-top:3px double #555;padding-top:10px}
+.dgr-log .card{background:#1b1622;border:1px solid #ffe14a;padding:8px 14px;margin:8px 0}
+.dgr-log .card p{margin:4px 0 0;color:#ccc!important}`;
   const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${css}</style></head>
-<body><main><h1>⚖️ ${esc(title)}</h1><div class="sub">${esc(new Date().toLocaleString('ko-KR'))} 저장 · 메시지 ${msgs.length}개</div>${rows.join('\n')}${glossary}</main></body></html>`;
-  download(`dangan-${store.state.code}-trial-log.html`, html, 'text/html');
+<body><div class="dgr-log"><main><h1>⚖️ ${esc(title)}</h1><div class="sub">${esc(new Date().toLocaleString('ko-KR'))} 저장 · 메시지 ${msgs.length}개</div>${rows.join('\n')}${glossary}</main></div></body></html>`;
+  return html;
+}
+
+// ---------- 지난 재판 (로그를 비울 때 보관된 것) ----------
+function openArchives() {
+  const list = store.state.trialArchives || [];
+  const gm = isGM();
+  const d = modal(`<h2>📚 지난 재판</h2>
+    <p class="hint">「로그 비우기」를 하면 그때까지의 재판 로그가 여기에 보관돼요.${gm ? ' 「지금 보관」은 로그를 비우지 않고 지금까지를 따로 남겨요.' : ''}</p>
+    ${gm ? '<div class="row"><input id="arTitle" class="grow" placeholder="보관 제목 (비우면 사건 제목)"><button class="btn small pink" id="arNow">지금 보관</button></div>' : ''}
+    <div class="stack">${list
+      .slice()
+      .reverse()
+      .map((a) => `<div class="lore-row"><b>${esc(a.title)}</b><small>${fmtTime(a.from)} ~ ${fmtTime(a.to)} · ${a.count}개</small><span class="grow"></span>
+        <button class="btn tiny" data-ar-view="${a.id}">보기</button><button class="btn tiny ghost" data-ar-save="${a.id}">HTML 저장</button>${gm ? `<button class="btn tiny ghost" data-ar-del="${a.id}">삭제</button>` : ''}</div>`)
+      .join('') || '<p class="hint">아직 보관된 재판이 없습니다.</p>'}</div>`, { wide: true });
+  const load = async (id) => {
+    const r = await emit('trial:archive', { id });
+    if (!r) return null;
+    return buildLogHTML(r.messages, `${store.state.title} — ${r.title}`);
+  };
+  $$('[data-ar-view]', d).forEach((b) => (b.onclick = async () => {
+    const html = await load(b.dataset.arView);
+    if (!html) return;
+    const v = modal('<iframe class="archive-view" title="지난 재판"></iframe>', { wide: true });
+    v.querySelector('iframe').srcdoc = html;
+  }));
+  $$('[data-ar-save]', d).forEach((b) => (b.onclick = async () => {
+    toast('HTML을 만드는 중…');
+    const html = await load(b.dataset.arSave);
+    if (html) download(`dangan-${store.state.code}-trial-${b.dataset.arSave}.html`, html, 'text/html');
+  }));
+  $$('[data-ar-del]', d).forEach((b) => (b.onclick = async () => {
+    if (!confirm('이 재판 기록을 지울까요? (되돌릴 수 없어요. 먼저 HTML 저장을 권장)')) return;
+    await emit('trial:archiveDelete', { id: b.dataset.arDel });
+    d.close();
+  }));
+  const now = $('#arNow', d);
+  if (now)
+    now.onclick = async () => {
+      if (await emit('trial:archiveNow', { title: $('#arTitle', d).value })) {
+        toast('지금까지의 재판 로그를 보관했어요.');
+        d.close();
+      }
+    };
 }
 
 // ---------- 언령 쏘기 ----------
